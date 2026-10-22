@@ -8,14 +8,18 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run": "tsc && node dist/index.js",
+    "dev": "nodemon --exec \"tsc && node dist/index.js\" --watch src/ -e js,ts",
     "clear": "rm -rf ./dist/*"
   },
   "dependencies": {
+    "dotenv": "^18.0.8",
     "express": "^5.3.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.23.1",
+    "nodemon": "^3.1.14",
+    "typescript": "^7.0.2"
   }
 }
