@@ -18,6 +18,20 @@ router.get("/", async (req, res) => {
     res.send(rows.rows)
 })
 
+router.post("/", async (req, res, next) => {
+    const body = req.body
+    console.log("body", { "content-type": req.get("content-type"), body })
+    const rs = await db.query("INSERT INTO storage (id, content) VALUES (gen_random_uuid(), $1::bytea) RETURNING id", [ body ])
+    console.log(rs.rowCount)
+    if ((rs.rowCount ?? 0) > 0) {
+        const id = rs.rows[0]["id"]
+        res.setHeader("Location", `${req.baseUrl}/${id}`)
+        res.sendStatus(201)
+    } else {
+        res.sendStatus(500)
+    }
+})
+
 router.get("/:id", async (req, res) => {
     const rows = await db.query("SELECT * FROM storage WHERE id = $1", [ req.params.id ])
     if (rows.rowCount == 0) {
