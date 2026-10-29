@@ -1,5 +1,5 @@
 import init from "../env/index.js";
-import { Pool } from "../../node_modules/@types/pg/index.js";
+import { Pool } from "pg";
 
 init();
 

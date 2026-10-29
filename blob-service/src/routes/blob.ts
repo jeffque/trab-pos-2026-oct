@@ -26,7 +26,7 @@ router.post("/", async (req, res, next) => {
     if ((rs.rowCount ?? 0) > 0) {
         const id = rs.rows[0]["id"]
         res.setHeader("Location", `${req.baseUrl}/${id}`)
-        res.sendStatus(201)
+        res.status(201).setHeader("Content-type", "application/json").send({ id })
     } else {
         res.sendStatus(500)
     }

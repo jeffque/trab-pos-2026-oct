@@ -1,15 +1,30 @@
 import express from "express";
 import * as db from "../db/index.js";
+import client from "../client/blob.js";
 
 const router = express.Router();
 
 export default router;
 
-router.get("/:version/:name", async (req, res) => {
-    const rs = await db.query("SELECT blob_id FROM source WHERE name = $1 AND version = $2", [ req.params.name, req.params.version ])
+router.get("/:name/:version", async (req, res) => {
+    const rs = await db.query("SELECT versions FROM source WHERE name = $1", [ req.params.name ])
     if (rs.rowCount == 0) {
         return res.sendStatus(404);
     }
-    const blobId = rs.rows[0]["blob_id"]
-    res.sendStatus(200)
+    const versions: { version: number, blob_id: string}[] = rs.rows[0]["versions"]
+    console.log(versions)
+
+    const selectedVersion = versions.filter(l => l.version.toString() == req.params.version).map(l => l.blob_id)
+
+    if (selectedVersion.length == 0) {
+        return res.sendStatus(404);
+    }
+
+    const indeedVersion: string = selectedVersion[0]!
+    
+
+    console.log(selectedVersion)
+    const blob = await client.fetch(indeedVersion);
+    console.log({blob})
+    res.status(200).send(blob)
 })
