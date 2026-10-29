@@ -10,6 +10,7 @@ const app = express();
 app.use(express.json())
 app.use("/blob", blobRouter)
 
-app.listen(3000, () => {
-    console.log("subiu na porta 3000")
+const PORT = process.env.PORT ?? 3001
+app.listen(PORT, () => {
+    console.log(`subiu na porta ${PORT}`)
 })
