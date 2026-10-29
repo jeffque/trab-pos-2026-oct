@@ -21,3 +21,14 @@ services:
       PGSCHEMA: blob
     env_file:
       - docker.env
+  source-service:
+    build:
+      context: ./source-service
+    depends_on:
+      - postgres
+    ports:
+      - 3002:3002
+    environment:
+      PGSCHEMA: source
+    env_file:
+      - docker.env
