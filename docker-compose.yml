@@ -10,3 +10,14 @@ services:
       # se quiser dados persistentes, descomente a próxima linha
       # - ./pgdata:/var/lib/postgresql
       - ./postgres-schemas:/docker-entrypoint-initdb.d
+  blob-service:
+    build:
+      context: ./blob-service
+    depends_on:
+      - postgres
+    ports:
+      - 3001:3001
+    environment:
+      PGSCHEMA: blob
+    env_file:
+      - docker.env
