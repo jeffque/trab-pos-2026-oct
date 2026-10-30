@@ -1,22 +1,41 @@
 {% layout "base.liquid" %}
 {% block content %}
-{% assign hasFile = false %}{% if mode == "view" or mode == "output" %}{% assign hasFile = true %}{% endif %}
 <div id="app" class="app" data-mode="{{ mode }}">
+    {% if pending %}<div hidden hx-get="{{ selfUrl }}" hx-trigger="every 1s" hx-target="#app" hx-select="#app" hx-swap="outerHTML"></div>{% endif %}
 
     <aside class="register" aria-labelledby="register-title">
+        <nav class="tabs" aria-label="Áreas">
+            <a href="/" {% if area == "arquivos" %}aria-current="page"{% endif %}>Arquivos</a>
+            <a href="/workspaces" {% if area == "workspaces" %}aria-current="page"{% endif %}>Workspaces</a>
+            <a href="/assemblagens" {% if area == "assemblagens" %}aria-current="page"{% endif %}>Assemblagens</a>
+        </nav>
+
         <header class="register__head">
-            <h1 id="register-title" class="register__title">Registro de fontes</h1>
-            <p class="register__count">{{ files.size }} {% if files.size == 1 %}arquivo{% else %}arquivos{% endif %}</p>
+            <h1 id="register-title" class="register__title">{% case area %}{% when "workspaces" %}Workspaces{% when "assemblagens" %}Assemblagens{% else %}Registro de fontes{% endcase %}</h1>
+            <p class="register__count">{{ items.size }} {% if items.size == 1 %}item{% else %}itens{% endif %}</p>
         </header>
 
+        {% case area %}
+        {% when "workspaces" %}
+        <a class="btn btn--primary btn--block" href="/workspaces/novo" {% if mode == "workspace-new" %}aria-current="page"{% endif %}>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+            Novo workspace
+        </a>
+        {% when "assemblagens" %}
+        <a class="btn btn--primary btn--block" href="/assemblagens/novo" {% if mode == "assemblage-new" %}aria-current="page"{% endif %}>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+            Nova assemblagem
+        </a>
+        {% else %}
         <a class="btn btn--primary btn--block" href="/novo" {% if mode == "new" %}aria-current="page"{% endif %}>
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
             Novo arquivo
         </a>
+        {% endcase %}
 
-        {% if files.size > 4 %}
+        {% if items.size > 4 %}
         <label class="filter">
-            <span class="visually-hidden">Filtrar arquivos</span>
+            <span class="visually-hidden">Filtrar por nome</span>
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
             <input type="search" placeholder="Filtrar por nome" data-filter autocomplete="off">
         </label>
@@ -24,28 +43,28 @@
 
         {% if registerError %}
         <div class="alert" role="alert">
-            <p class="alert__title">Registro indisponível</p>
+            <p class="alert__title">Lista indisponível</p>
             <p>{{ registerError }}.</p>
             <p>Confira se o container está de pé com <code>docker compose ps</code>.</p>
         </div>
-        {% elsif files.size == 0 %}
-        <p class="register__empty">Nenhum arquivo registrado ainda.</p>
+        {% elsif items.size == 0 %}
+        <p class="register__empty">{% case area %}{% when "workspaces" %}Nenhum workspace ainda.{% when "assemblagens" %}Nenhuma assemblagem ainda.{% else %}Nenhum arquivo registrado ainda.{% endcase %}</p>
         {% else %}
         <table class="ledger">
             <thead>
-                <tr><th scope="col">Nº</th><th scope="col">Arquivo</th><th scope="col"><abbr title="Revisão mais recente">Rev</abbr></th></tr>
+                <tr><th scope="col">Nº</th><th scope="col">Nome</th><th scope="col">{% if area == "arquivos" %}<abbr title="Revisão mais recente">Rev</abbr>{% else %}Estado{% endif %}</th></tr>
             </thead>
             <tbody>
-                {% for f in files %}
+                {% for f in items %}
                 <tr class="ledger__row{% if f.current %} is-current{% endif %}" data-name="{{ f.name | downcase }}">
                     <td class="ledger__no">{{ f.short }}</td>
-                    <td class="ledger__name"><a href="/source/{{ f.id }}" {% if f.current %}aria-current="page"{% endif %}>{{ f.name }}</a></td>
-                    <td><span class="delta{% if f.current %} delta--active{% endif %}">{{ f.rev }}</span></td>
+                    <td class="ledger__name"><a href="{{ f.href }}" {% if f.current %}aria-current="page"{% endif %}>{{ f.name }}</a></td>
+                    <td>{% if area == "arquivos" %}<span class="delta{% if f.current %} delta--active{% endif %}">{{ f.rev }}</span>{% else %}<span class="state state--{{ f.status }}">{{ f.statusLabel }}</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <p class="register__nomatch" data-nomatch hidden>Nenhum arquivo com esse nome.</p>
+        <p class="register__nomatch" data-nomatch hidden>Nada com esse nome.</p>
         {% endif %}
     </aside>
 
@@ -102,59 +121,227 @@
                 </footer>
             </form>
 
-        {% when "output" %}
-            <div class="drawing" data-editor>
+        {% when "workspace" %}
+            <div class="drawing">
                 <header class="drawing__head">
-                    <h2 class="drawing__title">{{ file.name }}</h2>
-                    <span class="drawing__kind drawing__kind--{{ build.status }}">{% if build.kind == "assembla" %}Assembly{% else %}Compilação{% endif %}</span>
-                    <span class="drawing__rev"><span class="delta delta--active">{{ selected }}</span> REV {{ selected }}</span>
-                    {% if build.kind == "assembla" and build.status == "ok" %}<span class="drawing__guide" data-guide aria-live="off">L 1–{{ lineCount }} / {{ lineCount }}</span>{% endif %}
+                    <h2 class="drawing__title">{{ ws.name }}</h2>
+                    <span class="drawing__kind">Workspace</span>
+                    <span class="state state--{{ ws.status }}">{% if pending %}<span class="job__spinner" aria-hidden="true"></span>{% endif %}{{ ws.statusLabel }}</span>
                 </header>
-
-                {% if build.status == "erro" %}
-                <p class="drawing__error" role="alert">O gcc não conseguiu {% if build.kind == "assembla" %}gerar o assembly{% else %}compilar{% endif %} a REV {{ selected }}. Corrija o código e salve uma nova revisão.</p>
-                {% elsif build.status == "pendente" %}
-                <p class="drawing__note">Este pedido ainda está na fila. A lista de emissões, ao lado, atualiza sozinha.</p>
+                {% if error %}<p class="drawing__error" role="alert">{{ error }}</p>{% endif %}
+                {% if ws.status == "erro" %}
+                <p class="drawing__error">O gcc não conseguiu compilar este workspace. Corrija as fontes, salve novas revisões e fixe-as aqui.</p>
+                {% elsif pending %}
+                <p class="drawing__note">Na fila de compilação. Os arquivos ficam travados até o resultado voltar; a tela se atualiza sozinha.</p>
                 {% endif %}
+                <div class="sheet-body">
+                    <section class="block" aria-labelledby="ws-files">
+                        <h3 class="block__title" id="ws-files">Fontes, cada uma fixa numa revisão</h3>
+                        {% if ws.files.size == 0 %}
+                        <p class="block__empty">Nenhuma fonte ainda. Inclua arquivos .c e .h abaixo.</p>
+                        {% else %}
+                        <table class="parts">
+                            <thead><tr><th scope="col">Arquivo</th><th scope="col">Revisão</th><th scope="col"><span class="visually-hidden">Ações</span></th></tr></thead>
+                            <tbody>
+                            {% for f in ws.files %}
+                                <tr>
+                                    <td class="parts__name"><a href="/source/{{ f.source_id }}?rev={{ f.version }}">{{ f.name }}</a></td>
+                                    <td class="parts__rev">
+                                        <span class="delta">{{ f.version }}</span> REV {{ f.version }}
+                                        {% if f.outdated and pending == false %}
+                                        <form method="post" action="/workspaces/{{ ws.id }}/arquivos" class="inline-form">
+                                            <input type="hidden" name="source_id" value="{{ f.source_id }}">
+                                            <input type="hidden" name="version" value="{{ f.newest }}">
+                                            <button class="linkbtn" type="submit">atualizar para REV {{ f.newest }}</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                    <td class="parts__act">
+                                        <form method="post" action="/workspaces/{{ ws.id }}/arquivos/{{ f.source_id }}/remover" class="inline-form">
+                                            <button class="linkbtn" type="submit" {% if pending %}disabled{% endif %}>remover</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
 
-                {% if build.log != "" %}
-                <section class="buildlog{% if build.status == "erro" %} buildlog--error{% endif %}" aria-labelledby="log-title">
-                    <h3 class="buildlog__title" id="log-title">Mensagens do gcc</h3>
-                    <pre class="buildlog__text">{{ build.log }}</pre>
-                </section>
-                {% endif %}
+                        {% unless pending %}
+                        {% if candidates.size > 0 %}
+                        <form class="addform" method="post" action="/workspaces/{{ ws.id }}/arquivos">
+                            <label class="field">
+                                <span class="field__label">Arquivo</span>
+                                <select name="source_id" required>
+                                    {% for c in candidates %}<option value="{{ c.id }}">{{ c.name }} (REV {{ c.newest }})</option>{% endfor %}
+                                </select>
+                            </label>
+                            <label class="field field--short">
+                                <span class="field__label">Revisão</span>
+                                <input type="text" name="version" inputmode="numeric" pattern="[0-9]*" placeholder="última" autocomplete="off">
+                            </label>
+                            <button class="btn" type="submit">Incluir</button>
+                        </form>
+                        {% else %}
+                        <p class="block__empty">Não há outras fontes .c/.h no registro. Crie arquivos na área <a href="/">Arquivos</a>.</p>
+                        {% endif %}
+                        {% endunless %}
+                    </section>
 
-                {% if build.status == "ok" and build.kind == "assembla" %}
-                <div class="editor">
-                    <pre class="editor__gutter" aria-hidden="true" data-gutter>{{ lines }}</pre>
-                    <textarea class="editor__text" readonly spellcheck="false" wrap="off" aria-label="Assembly gerado de {{ file.name }}, revisão {{ selected }}" data-text>{{ content }}</textarea>
+                    <section class="block" aria-labelledby="ws-result">
+                        <h3 class="block__title" id="ws-result">Arquivo objeto</h3>
+                        {% case ws.status %}
+                        {% when "compilado" %}
+                        <p class="block__text">Objeto de <b>{{ ws.size }}</b> gerado e guardado no blob-service.</p>
+                        <div class="actions">
+                            <a class="btn" href="{{ ws.download }}" hx-boost="false" download>
+                                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>
+                                Baixar {{ ws.name }}.o
+                            </a>
+                            <a class="btn" href="/assemblagens/novo?ws={{ ws.id }}">Usar numa assemblagem</a>
+                        </div>
+                        {% when "na_fila" %}
+                        <p class="block__text">Aguardando o compila-worker.</p>
+                        {% when "erro" %}
+                        <p class="block__text">Nenhum objeto gerado.</p>
+                        {% else %}
+                        <p class="block__text">Ainda não compilado. Compilar roda <code>gcc -c</code> em cada .c (com os .h ao lado) e junta tudo num único .o.</p>
+                        {% endcase %}
+                        {% if ws.log != "" %}
+                        <div class="buildlog{% if ws.status == "erro" %} buildlog--error{% endif %}">
+                            <h4 class="buildlog__title">Mensagens do gcc</h4>
+                            <pre class="buildlog__text">{{ ws.log }}</pre>
+                        </div>
+                        {% endif %}
+                        {% if ws.logs %}<p class="block__meta"><a href="{{ ws.logs }}" target="_blank" rel="noopener" hx-boost="false">logs desta compilação no Grafana</a></p>{% endif %}
+                    </section>
                 </div>
-                {% elsif build.status == "ok" %}
-                <div class="blank">
-                    <h3 class="blank__title">Binário gerado</h3>
-                    <p>{{ build.size }}, ligado estaticamente para Linux x86-64. Por segurança, o worker só compila: o programa nunca é executado no servidor.</p>
-                    <a class="btn btn--primary" href="{{ build.download }}" hx-boost="false" download>
-                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>
-                        Baixar binário
-                    </a>
-                </div>
-                {% elsif build.log == "" %}
-                <div class="blank"><p>Nenhuma saída registrada.</p></div>
-                {% endif %}
-
                 <footer class="drawing__foot">
-                    <p class="drawing__status">{% if build.status == "ok" and build.log != "" %}Gerado com avisos do gcc.{% elsif build.status == "ok" %}Gerado sem avisos.{% elsif build.status == "erro" %}Falhou.{% else %}Na fila.{% endif %}</p>
-                    {% if build.status == "ok" and build.kind == "assembla" %}
-                    <a class="btn" href="{{ build.download }}" hx-boost="false" download>Baixar .s</a>
-                    {% endif %}
-                    <a class="btn" href="/source/{{ file.id }}?rev={{ selected }}">Voltar ao código</a>
+                    <p class="drawing__status">{% if ws.hasC %}{{ ws.files.size }} fontes prontas para compilar.{% else %}Inclua ao menos um arquivo .c para compilar.{% endif %}</p>
+                    <form method="post" action="/workspaces/{{ ws.id }}/compilar" class="inline-form">
+                        <button class="btn btn--primary" type="submit" {% if pending or ws.hasC == false %}disabled{% endif %}>Compilar workspace</button>
+                    </form>
                 </footer>
             </div>
 
+        {% when "workspace-new" %}
+            <form class="drawing" method="post" action="/workspaces/novo">
+                <header class="drawing__head">
+                    <label class="drawing__name">
+                        <span class="visually-hidden">Nome do workspace</span>
+                        <input type="text" name="name" value="{{ form.name }}" placeholder="biblioteca-matematica" required autofocus autocomplete="off" spellcheck="false" {% if error %}aria-invalid="true" aria-describedby="form-error"{% endif %}>
+                    </label>
+                    <span class="drawing__kind">Workspace</span>
+                </header>
+                {% if error %}<p class="drawing__error" id="form-error" role="alert">{{ error }}</p>{% endif %}
+                <div class="sheet-body">
+                    <section class="block">
+                        <h3 class="block__title">O que é um workspace</h3>
+                        <p class="block__text">Um conjunto de fontes .c e .h, cada uma fixa numa revisão. Quando estiver pronto, ele vai para a fila de compilação e vira um único arquivo objeto (.o), que depois pode ser linkado numa assemblagem.</p>
+                    </section>
+                </div>
+                <footer class="drawing__foot">
+                    <p class="drawing__status">Depois de criar, inclua as fontes.</p>
+                    <button class="btn btn--primary" type="submit">Criar workspace</button>
+                </footer>
+            </form>
+
+        {% when "assemblage" %}
+            <div class="drawing">
+                <header class="drawing__head">
+                    <h2 class="drawing__title">{{ asm.name }}</h2>
+                    <span class="drawing__kind">Assemblagem</span>
+                    <span class="state state--{{ asm.status }}">{% if pending %}<span class="job__spinner" aria-hidden="true"></span>{% endif %}{{ asm.statusLabel }}</span>
+                </header>
+                {% if asm.status == "erro" %}
+                <p class="drawing__error">A linkagem falhou. Veja as mensagens abaixo (símbolo duplicado ou função sem definição são os casos comuns).</p>
+                {% elsif pending %}
+                <p class="drawing__note">Na fila de assemblagem. A tela se atualiza sozinha.</p>
+                {% endif %}
+                <div class="sheet-body">
+                    <section class="block" aria-labelledby="asm-objects">
+                        <h3 class="block__title" id="asm-objects">Arquivos objeto linkados</h3>
+                        <table class="parts">
+                            <thead><tr><th scope="col">Workspace</th><th scope="col">Objeto</th></tr></thead>
+                            <tbody>
+                            {% for o in asm.objects %}
+                                <tr><td class="parts__name"><a href="/workspaces/{{ o.workspace_id }}">{{ o.workspace_name }}</a></td><td class="parts__rev mono">{{ o.workspace_name }}.o</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <p class="block__meta">Foto tirada no pedido: recompilar um workspace depois não muda esta assemblagem.</p>
+                    </section>
+                    <section class="block" aria-labelledby="asm-result">
+                        <h3 class="block__title" id="asm-result">Executável</h3>
+                        {% case asm.status %}
+                        {% when "pronto" %}
+                        <p class="block__text">Executável de <b>{{ asm.size }}</b>, ligado estaticamente para Linux x86-64. Por segurança, ele nunca é executado no servidor.</p>
+                        <div class="actions">
+                            <a class="btn btn--primary" href="{{ asm.download }}" hx-boost="false" download>
+                                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>
+                                Baixar executável
+                            </a>
+                        </div>
+                        {% when "na_fila" %}
+                        <p class="block__text">Aguardando o assembla-worker.</p>
+                        {% else %}
+                        <p class="block__text">Nenhum executável gerado.</p>
+                        {% endcase %}
+                        {% if asm.log != "" %}
+                        <div class="buildlog{% if asm.status == "erro" %} buildlog--error{% endif %}">
+                            <h4 class="buildlog__title">Mensagens do linker</h4>
+                            <pre class="buildlog__text">{{ asm.log }}</pre>
+                        </div>
+                        {% endif %}
+                        {% if asm.logs %}<p class="block__meta"><a href="{{ asm.logs }}" target="_blank" rel="noopener" hx-boost="false">logs desta assemblagem no Grafana</a></p>{% endif %}
+                    </section>
+                </div>
+                <footer class="drawing__foot">
+                    <p class="drawing__status">{% case asm.status %}{% when "pronto" %}Pronto.{% when "erro" %}Falhou.{% else %}Na fila.{% endcase %}</p>
+                    <a class="btn" href="/assemblagens/novo">Nova assemblagem</a>
+                </footer>
+            </div>
+
+        {% when "assemblage-new" %}
+            <form class="drawing" method="post" action="/assemblagens/novo">
+                <header class="drawing__head">
+                    <label class="drawing__name">
+                        <span class="visually-hidden">Nome da assemblagem</span>
+                        <input type="text" name="name" value="{{ form.name }}" placeholder="calculadora" required autofocus autocomplete="off" spellcheck="false" {% if error %}aria-invalid="true" aria-describedby="form-error"{% endif %}>
+                    </label>
+                    <span class="drawing__kind">Assemblagem</span>
+                </header>
+                {% if error %}<p class="drawing__error" id="form-error" role="alert">{{ error }}</p>{% endif %}
+                <div class="sheet-body">
+                    <section class="block">
+                        <h3 class="block__title">Workspaces compilados</h3>
+                        {% if compiled.size == 0 %}
+                        <p class="block__empty">Nenhum workspace compilado ainda. <a href="/workspaces">Compile um workspace</a> primeiro.</p>
+                        {% else %}
+                        <p class="block__text">Escolha os arquivos objeto que entram no executável. Exatamente um deles precisa ter a função <code>main</code>.</p>
+                        <fieldset class="checklist">
+                            <legend class="visually-hidden">Workspaces</legend>
+                            {% for w in compiled %}
+                            <label class="checklist__item">
+                                <input type="checkbox" name="workspace_ids" value="{{ w.id }}" {% if w.checked %}checked{% endif %}>
+                                <span class="checklist__name">{{ w.name }}.o</span>
+                                <span class="checklist__meta">{{ w.files }} fontes · {{ w.size }}</span>
+                            </label>
+                            {% endfor %}
+                        </fieldset>
+                        {% endif %}
+                    </section>
+                </div>
+                <footer class="drawing__foot">
+                    <p class="drawing__status">O pedido vai para a fila assembla; o assembla-worker linka com gcc.</p>
+                    <button class="btn btn--primary" type="submit" {% if compiled.size == 0 %}disabled{% endif %}>Assemblar</button>
+                </footer>
+            </form>
+
         {% when "missing" %}
             <div class="blank">
-                <h2 class="blank__title">Arquivo não encontrado</h2>
-                <p>Esse endereço não corresponde a nenhum arquivo do registro. Ele pode ter sido digitado errado.</p>
+                <h2 class="blank__title">Não encontrado</h2>
+                <p>Esse endereço não corresponde a nada registrado. Ele pode ter sido digitado errado.</p>
                 <a class="btn" href="/">Voltar ao registro</a>
             </div>
 
@@ -162,13 +349,23 @@
             <div class="blank">
                 <h2 class="blank__title">O BFF não conseguiu completar o pedido</h2>
                 <p class="blank__detail">{{ failure }}</p>
-                <p>Se o problema for o source-service ou o blob-service, veja os logs com <code>docker compose logs -f</code>.</p>
+                <p>Veja os logs com <code>docker compose logs -f</code> ou no Grafana.</p>
                 <a class="btn" href="/">Voltar ao registro</a>
             </div>
 
         {% else %}
             <div class="blank">
-                {% if files.size == 0 and registerError == nil %}
+                {% case area %}
+                {% when "workspaces" %}
+                <h2 class="blank__title">Workspaces</h2>
+                <p>Um workspace junta fontes .c e .h em revisões fixas e compila tudo num único arquivo objeto (.o).</p>
+                <a class="btn btn--primary" href="/workspaces/novo">Criar workspace</a>
+                {% when "assemblagens" %}
+                <h2 class="blank__title">Assemblagens</h2>
+                <p>Uma assemblagem linka os arquivos objeto de workspaces compilados num executável.</p>
+                <a class="btn btn--primary" href="/assemblagens/novo">Criar assemblagem</a>
+                {% else %}
+                {% if items.size == 0 and registerError == nil %}
                 <h2 class="blank__title">Registro vazio</h2>
                 <p>Crie o primeiro arquivo. Cada vez que você salvar, ele ganha uma nova revisão e as anteriores ficam guardadas.</p>
                 <a class="btn btn--primary" href="/novo">Criar o primeiro arquivo</a>
@@ -176,15 +373,17 @@
                 <h2 class="blank__title">Nenhum arquivo aberto</h2>
                 <p>Escolha um arquivo no registro ou crie um novo.</p>
                 {% endif %}
+                {% endcase %}
             </div>
         {% endcase %}
         </div>
     </main>
 
-    <aside class="side" aria-label="Revisões, emissões e carimbo">
+    <aside class="side" aria-label="Detalhes e carimbo">
+        {% case mode %}
+        {% when "view" %}
         <section class="panel" aria-labelledby="rev-title">
             <h2 class="panel__title" id="rev-title">Revisões</h2>
-            {% if hasFile %}
             <ol class="revs">
                 {% for r in revisions %}
                 <li>
@@ -196,86 +395,134 @@
                 </li>
                 {% endfor %}
             </ol>
-            {% elsif mode == "new" %}
-            <p class="panel__empty">O arquivo nasce na REV 1. Cada salvamento depois disso acrescenta uma revisão.</p>
-            {% else %}
-            <p class="panel__empty">Abra um arquivo para ver suas revisões.</p>
-            {% endif %}
         </section>
-
-        <section class="panel" id="emissions" aria-labelledby="out-title"
-            {% if pending %}hx-get="{{ selfUrl }}" hx-trigger="every 1s" hx-target="this" hx-select="#emissions" hx-swap="outerHTML" hx-push-url="false"{% endif %}>
-            <h2 class="panel__title" id="out-title">Emissões{% if hasFile %} · REV {{ selected }}{% endif %}</h2>
-            <div class="emit">
-                {% assign kinds = "compila,assembla" | split: "," %}
-                {% for k in kinds %}
-                <form method="post" action="{% if hasFile %}/source/{{ file.id }}/emitir{% endif %}" hx-target="#app" hx-select="#app" hx-swap="outerHTML">
-                    <input type="hidden" name="kind" value="{{ k }}">
-                    <input type="hidden" name="rev" value="{{ selected }}">
-                    <button class="btn btn--block" type="submit" {% unless hasFile %}disabled aria-describedby="emit-note"{% endunless %}>
-                        {% if k == "compila" %}
-                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4 1.5 8 5 12M11 4l3.5 4L11 12M9.5 2.5l-3 11"/></svg>
-                        Compilar
-                        {% else %}
-                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h5"/></svg>
-                        Assemblar
-                        {% endif %}
-                    </button>
-                </form>
-                {% endfor %}
-            </div>
-            {% if hasFile %}
-                {% if jobs.size > 0 %}
-                <ul class="jobs" aria-live="polite">
-                    {% for j in jobs %}
-                    <li class="job job--{{ j.status }}">
-                        <span class="job__label">{{ j.label }}</span>
-                        <span class="job__status">
-                            {% if j.status == "pendente" %}<span class="job__spinner" aria-hidden="true"></span>{% endif %}
-                            {{ j.detail }}{% if j.warnings %} · com avisos{% endif %}
-                        </span>
+        <section class="panel" aria-labelledby="ws-title">
+            <h2 class="panel__title" id="ws-title">Workspaces</h2>
+            {% if compilable %}
+                {% if sideError %}<p class="side-error" role="alert">{{ sideError }}</p>{% endif %}
+                {% if usedBy.size > 0 %}
+                <ul class="jobs">
+                    {% for w in usedBy %}
+                    <li class="job">
+                        <a class="job__label job__label--link" href="/workspaces/{{ w.id }}">{{ w.name }}</a>
+                        <span class="job__status">REV {{ w.file_version }} · {{ w.statusLabel }}</span>
                         <span class="job__links">
-                            {% if j.status != "pendente" %}<a class="job__link" href="{{ j.url }}">{% if j.status == "erro" %}ver erro{% else %}ver saída{% endif %}</a>{% endif %}
-                            {% if j.logs %}<a class="job__logs" href="{{ j.logs }}" target="_blank" rel="noopener" hx-boost="false" title="Logs deste pedido em todos os serviços (Grafana)">logs</a>{% endif %}
+                        {% unless w.pinned or w.status == "na_fila" %}
+                            <form method="post" action="/source/{{ file.id }}/workspace" class="inline-form">
+                                <input type="hidden" name="workspace_id" value="{{ w.id }}">
+                                <input type="hidden" name="rev" value="{{ selected }}">
+                                <button class="linkbtn" type="submit">fixar REV {{ selected }}</button>
+                            </form>
+                        {% endunless %}
                         </span>
                     </li>
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="panel__empty">Compilar mostra as mensagens do gcc e gera o binário; Assemblar mostra o assembly gerado a partir do C. Os pedidos entram numa fila e um worker processa.</p>
+                <p class="panel__empty">Este arquivo ainda não está em nenhum workspace.</p>
+                {% endif %}
+                {% if candidates.size > 0 %}
+                <form class="addform addform--side" method="post" action="/source/{{ file.id }}/workspace">
+                    <input type="hidden" name="rev" value="{{ selected }}">
+                    <label class="field">
+                        <span class="field__label">Incluir a REV {{ selected }} em</span>
+                        <select name="workspace_id" required>
+                            {% for w in candidates %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <button class="btn" type="submit">Incluir</button>
+                </form>
+                {% elsif usedBy.size == 0 %}
+                <p class="panel__empty"><a href="/workspaces/novo">Crie um workspace</a> para compilar este arquivo.</p>
                 {% endif %}
             {% else %}
-            <p class="panel__empty" id="emit-note">Abra um arquivo para compilar ou gerar o assembly.</p>
+            <p class="panel__empty">Só arquivos .c e .h entram em workspaces.</p>
             {% endif %}
         </section>
 
+        {% when "workspace" %}
+        <section class="panel" aria-labelledby="next-title">
+            <h2 class="panel__title" id="next-title">Próximo passo</h2>
+            {% case ws.status %}
+            {% when "compilado" %}<p class="panel__empty">O objeto está pronto. <a href="/assemblagens/novo?ws={{ ws.id }}">Use-o numa assemblagem</a> para gerar o executável.</p>
+            {% when "na_fila" %}<p class="panel__empty">O compila-worker vai pegar o pedido na fila e devolver o evento “compilei”.</p>
+            {% when "erro" %}<p class="panel__empty">Corrija as fontes na área Arquivos, salve uma nova revisão e use “atualizar para REV n”.</p>
+            {% else %}<p class="panel__empty">Inclua as fontes .c e .h e clique em Compilar workspace.</p>
+            {% endcase %}
+        </section>
+        <section class="panel" aria-labelledby="flow-title">
+            <h2 class="panel__title" id="flow-title">Fluxo</h2>
+            <ol class="flow">
+                <li>workspace-service publica na fila <code>compila</code></li>
+                <li>compila-worker: <code>gcc -c</code> + <code>ld -r</code></li>
+                <li>objeto vai para o blob-service</li>
+                <li>evento <code>compilacao.resultado</code> volta e vincula o objeto</li>
+            </ol>
+        </section>
+
+        {% when "assemblage" %}
+        <section class="panel" aria-labelledby="flow-title">
+            <h2 class="panel__title" id="flow-title">Fluxo</h2>
+            <ol class="flow">
+                <li>assemblage-service publica na fila <code>assembla</code></li>
+                <li>assembla-worker baixa os .o e linka com <code>gcc -static</code></li>
+                <li>executável vai para o blob-service</li>
+                <li>evento <code>assemblagem.resultado</code> volta com o blob</li>
+            </ol>
+        </section>
+
+        {% else %}
+        <section class="panel" aria-labelledby="flow-title">
+            <h2 class="panel__title" id="flow-title">Como funciona</h2>
+            <ol class="flow">
+                <li><b>Arquivos</b>: fontes .c e .h com histórico de revisões</li>
+                <li><b>Workspaces</b>: fontes em revisões fixas viram um arquivo objeto</li>
+                <li><b>Assemblagens</b>: objetos linkados num executável</li>
+            </ol>
+        </section>
+        {% endcase %}
+
+        {% case mode %}
+        {% when "view" %}
+            {% assign s_title = file.name %}{% assign s_id = file.id %}
+            {% assign s_a_label = "Rev" %}{% capture s_a %}{{ selected }} / {{ newest }}{% endcapture %}
+            {% assign s_b_label = "Linguagem" %}{% assign s_b = file.language %}
+            {% assign s_c_label = "Tamanho" %}{% assign s_c = size %}
+            {% assign s_d_label = "Cursor" %}{% assign s_d = "L1:C1" %}
+        {% when "new" %}
+            {% assign s_title = "novo arquivo" %}{% assign s_id = "—" %}
+            {% assign s_a_label = "Rev" %}{% assign s_a = "1" %}
+            {% assign s_b_label = "Linguagem" %}{% assign s_b = "—" %}
+            {% assign s_c_label = "Tamanho" %}{% assign s_c = "—" %}
+            {% assign s_d_label = "Cursor" %}{% assign s_d = "L1:C1" %}
+        {% when "workspace" %}
+            {% assign s_title = ws.name %}{% assign s_id = ws.id %}
+            {% assign s_a_label = "Estado" %}{% assign s_a = ws.statusLabel %}
+            {% assign s_b_label = "Fontes" %}{% assign s_b = ws.files.size %}
+            {% assign s_c_label = "Objeto" %}{% assign s_c = ws.size %}
+            {% assign s_d_label = "Tipo" %}{% assign s_d = "workspace" %}
+        {% when "assemblage" %}
+            {% assign s_title = asm.name %}{% assign s_id = asm.id %}
+            {% assign s_a_label = "Estado" %}{% assign s_a = asm.statusLabel %}
+            {% assign s_b_label = "Objetos" %}{% assign s_b = asm.objects.size %}
+            {% assign s_c_label = "Executável" %}{% assign s_c = asm.size %}
+            {% assign s_d_label = "Tipo" %}{% assign s_d = "assemblagem" %}
+        {% else %}
+            {% assign s_title = "—" %}{% assign s_id = "—" %}
+            {% assign s_a_label = "Rev" %}{% assign s_a = "—" %}
+            {% assign s_b_label = "Linguagem" %}{% assign s_b = "—" %}
+            {% assign s_c_label = "Tamanho" %}{% assign s_c = "—" %}
+            {% assign s_d_label = "Cursor" %}{% assign s_d = "—" %}
+        {% endcase %}
         <section class="stamp" aria-labelledby="stamp-title">
             <h2 class="visually-hidden" id="stamp-title">Carimbo</h2>
             <dl class="stamp__grid">
-                <div class="stamp__cell stamp__cell--wide">
-                    <dt>Título</dt>
-                    <dd class="stamp__title">{% if hasFile %}{{ file.name }}{% elsif mode == "new" %}novo arquivo{% else %}—{% endif %}</dd>
-                </div>
-                <div class="stamp__cell stamp__cell--wide">
-                    <dt>Nº do arquivo</dt>
-                    <dd class="mono" {% if hasFile %}title="{{ file.id }}"{% endif %}>{% if hasFile %}{{ file.id }}{% else %}—{% endif %}</dd>
-                </div>
-                <div class="stamp__cell">
-                    <dt>Rev</dt>
-                    <dd class="mono">{% if hasFile %}{{ selected }} / {{ newest }}{% elsif mode == "new" %}1{% else %}—{% endif %}</dd>
-                </div>
-                <div class="stamp__cell">
-                    <dt>Linguagem</dt>
-                    <dd>{% if hasFile %}{{ file.language }}{% else %}—{% endif %}</dd>
-                </div>
-                <div class="stamp__cell">
-                    <dt>Tamanho</dt>
-                    <dd class="mono">{% if hasFile %}{{ size }}{% else %}—{% endif %}</dd>
-                </div>
-                <div class="stamp__cell">
-                    <dt>Cursor</dt>
-                    <dd class="mono" data-cursor>{% if mode == "view" or mode == "new" or mode == "output" %}L1:C1{% else %}—{% endif %}</dd>
-                </div>
+                <div class="stamp__cell stamp__cell--wide"><dt>Título</dt><dd class="stamp__title">{{ s_title }}</dd></div>
+                <div class="stamp__cell stamp__cell--wide"><dt>Nº</dt><dd class="mono" title="{{ s_id }}">{{ s_id }}</dd></div>
+                <div class="stamp__cell"><dt>{{ s_a_label }}</dt><dd class="mono">{{ s_a }}</dd></div>
+                <div class="stamp__cell"><dt>{{ s_b_label }}</dt><dd>{{ s_b }}</dd></div>
+                <div class="stamp__cell"><dt>{{ s_c_label }}</dt><dd class="mono">{{ s_c }}</dd></div>
+                <div class="stamp__cell"><dt>{{ s_d_label }}</dt><dd class="mono" {% if s_d_label == "Cursor" %}data-cursor{% endif %}>{{ s_d }}</dd></div>
                 <div class="stamp__cell stamp__cell--wide stamp__cell--foot">
                     <dt>Correlation ID</dt>
                     <dd class="mono">{% if correlation %}<a href="{{ correlationLogs }}" target="_blank" rel="noopener" hx-boost="false" title="Ver os logs desta requisição no Grafana">{{ correlation }}</a>{% else %}—{% endif %}</dd>

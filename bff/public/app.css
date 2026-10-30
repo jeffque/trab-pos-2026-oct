@@ -379,6 +379,95 @@ kbd {
 .stamp dd.mono { font-size: 12.5px; }
 .stamp__title { font: 600 17px/1.3 var(--mono) !important; }
 
+/* ---------- áreas (arquivos / workspaces / assemblagens) ---------- */
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1.5px solid var(--ink); }
+.tabs a {
+    display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 6px;
+    font: 600 12px var(--letter); text-transform: uppercase; letter-spacing: 0.06em;
+    text-decoration: none; color: var(--ink-2); background: var(--paper);
+    transition: background-color 160ms var(--ease), color 160ms var(--ease);
+}
+.tabs a + a { border-left: 1px solid var(--ink); }
+.tabs a:hover { background: var(--tint); color: var(--ink); }
+.tabs a[aria-current="page"] { background: var(--ink); color: var(--sheet); }
+
+/* estado de workspace/assemblagem: etiqueta de texto; erro em tinta vermelha */
+.state {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    padding: 3px 8px; border: 1px solid var(--line);
+    font: 600 11px/1 var(--letter); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+}
+.state--compilado, .state--pronto { border-color: var(--ink); color: var(--ink); }
+.state--erro { border-color: var(--red-ink); color: var(--red-ink); }
+.state--na_fila { border-style: dashed; }
+.ledger td .state { padding: 2px 6px; font-size: 10px; }
+.ledger th:last-child { width: 96px; }
+
+/* corpo rolável da prancha para telas sem editor */
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.block { padding: 20px 24px 24px; border-bottom: 1px solid var(--hair); display: flex; flex-direction: column; gap: 14px; }
+.block:last-child { border-bottom: 0; }
+.block__title { margin: 0; font: 600 12px var(--letter); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+.block__text, .block__empty { margin: 0; font-size: 15px; max-width: 72ch; text-wrap: pretty; }
+.block__empty { color: var(--ink-2); }
+.block__meta { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.block .buildlog { border: 1px solid var(--hair); max-height: 320px; }
+.block .buildlog--error { border-color: var(--red-ink); max-height: 420px; }
+.buildlog__title { margin: 0; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.parts { width: 100%; border-collapse: collapse; border-top: 1.5px solid var(--ink); }
+.parts th {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--ink);
+    font: 600 11px var(--letter); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+}
+.parts td { padding: 0 10px; height: 46px; border-bottom: 1px solid var(--hair); }
+.parts__name a { font: 500 14px var(--mono); text-decoration: none; }
+.parts__name a:hover { text-decoration: underline; }
+.parts__rev { font: 500 13px var(--mono); white-space: nowrap; }
+.parts__rev .inline-form { margin-left: 10px; }
+.parts__act { text-align: right; width: 1%; white-space: nowrap; }
+
+.inline-form { display: inline; margin: 0; }
+.linkbtn {
+    border: 0; background: none; padding: 4px 0; cursor: pointer;
+    font: 500 13px var(--sans); color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px;
+}
+.linkbtn:hover { color: var(--ink); }
+.linkbtn:disabled { color: var(--line); cursor: not-allowed; text-decoration: none; }
+
+.addform { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.addform--side { margin-top: 12px; }
+.addform--side .field { flex: 1 1 100%; }
+.field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
+.field--short { flex: 0 0 110px; min-width: 0; }
+.field__label { font: 600 11px var(--letter); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+.field select, .field input {
+    min-height: 38px; padding: 0 10px; width: 100%;
+    border: 1px solid var(--ink); border-radius: 2px; background: var(--sheet);
+    font: 400 14px var(--mono); color: var(--ink);
+}
+.field input::placeholder { color: var(--line-text); }
+.field select:focus-visible, .field input:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+
+.checklist { margin: 0; padding: 0; border: 0; border-top: 1.5px solid var(--ink); }
+.checklist__item {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+    min-height: 48px; padding: 0 10px; border-bottom: 1px solid var(--hair); cursor: pointer;
+    transition: background-color 160ms var(--ease);
+}
+.checklist__item:hover { background: var(--tint); }
+.checklist__item:has(input:checked) { background: var(--sheet); }
+.checklist__item input { width: 18px; height: 18px; accent-color: var(--red); }
+.checklist__name { font: 600 14px var(--mono); }
+.checklist__meta { font-size: 13px; color: var(--ink-2); }
+
+.side-error { margin: 10px 0 0; padding: 8px 10px; background: var(--red-wash); color: var(--red-ink); font-size: 13.5px; font-weight: 500; }
+.job__label--link { text-transform: none; letter-spacing: 0; font: 500 14px var(--mono); text-decoration: none; }
+.job__label--link:hover { text-decoration: underline; }
+.flow { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
+.flow code { font-size: 12.5px; color: var(--ink); }
+
 /* ---------- transição: a prancha nova é "plotada" de cima para baixo ---------- */
 ::view-transition-old(sheet) { animation: 140ms var(--ease) both sheet-out; }
 ::view-transition-new(sheet) { animation: 420ms var(--ease) both sheet-plot; }
@@ -412,4 +501,8 @@ kbd {
     .drawing__guide { margin-left: 0; }
     .kbd-hint { display: none; }
     .drawing__foot { padding: 10px 12px; }
+    .block { padding: 16px 12px 20px; }
+    .parts td { padding: 8px 6px; height: auto; }
+    .parts__rev { white-space: normal; }
+    .parts__rev .inline-form { display: block; margin: 2px 0 0; }
 }
