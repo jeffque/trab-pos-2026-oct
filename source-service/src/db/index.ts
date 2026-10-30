@@ -7,6 +7,12 @@ init();
 // cada serviço enxerga só o próprio schema (PGSCHEMA vem do docker-compose)
 const pool = new Pool({ options: `-c search_path=${process.env.PGSCHEMA ?? "public"}` });
 
+// conexão ociosa derrubada pelo banco (reinício, failover): sem este handler o processo inteiro cai.
+// O pool descarta a conexão e abre outra na próxima consulta.
+pool.on("error", (err) => {
+  log().warn({ err: err.message }, "conexão ociosa com o banco perdida; o pool vai reconectar")
+})
+
 export const query = async (text: string, params?: any[]) => {
   const start = Date.now()
   try {
