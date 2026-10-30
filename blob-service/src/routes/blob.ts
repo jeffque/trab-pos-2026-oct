@@ -1,5 +1,6 @@
 import express from "express";
 import * as db from "../db/index.js";
+import { log } from "../log/index.js";
 
 const router = express.Router();
 
@@ -20,11 +21,10 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res, next) => {
     const body = req.body
-    console.log("body", { "content-type": req.get("content-type"), body })
     const rs = await db.query("INSERT INTO storage (id, content) VALUES (gen_random_uuid(), $1::bytea) RETURNING id", [ body ])
-    console.log(rs.rowCount)
     if ((rs.rowCount ?? 0) > 0) {
         const id = rs.rows[0]["id"]
+        log().info({ blob_id: id, bytes: body?.length ?? 0 }, "blob armazenado")
         res.setHeader("Location", `${req.baseUrl}/${id}`)
         res.status(201).setHeader("Content-type", "application/json").send({ id })
     } else {
