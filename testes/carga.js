@@ -10,9 +10,11 @@ import { check, sleep } from "k6";
 import { Trend } from "k6/metrics";
 
 const SOURCE = __ENV.SOURCE_URL || "http://localhost:3002";
+const WORKSPACE = __ENV.WORKSPACE_URL || "http://localhost:3004";
 const BFF = __ENV.BFF_URL || "http://localhost:3000";
 
-// tempo entre pedir o build e ver o resultado (fila + gcc + gravação)
+// tempo entre pedir a compilação do workspace e ver o objeto vinculado
+// (fila compila + gcc + blob + evento compilacao.resultado)
 const buildTurnaround = new Trend("build_turnaround", true);
 
 export const options = {
@@ -43,7 +45,7 @@ export const options = {
             maxVUs: 40,
             startTime: "5s",
         },
-        // builds assíncronos: pede e acompanha até concluir
+        // compilação assíncrona: cada iteração monta um workspace (.c + .h), compila e acompanha
         builds: {
             executor: "constant-arrival-rate",
             exec: "build",
@@ -65,7 +67,14 @@ export const options = {
     },
 };
 
+const HEADER = `#ifndef CALC_H
+#define CALC_H
+int soma(int a, int b);
+#endif
+`;
+
 const CODIGO = `#include <stdio.h>
+#include "calc.h"
 
 int soma(int a, int b) {
     return a + b;
@@ -84,16 +93,25 @@ function headers(tag, extra) {
     return Object.assign({ "X-Correlation-ID": `k6-${tag}-${__VU}-${iter}` }, extra || {});
 }
 
-// cria um arquivo próprio para o teste (nome único, para poder rodar várias vezes)
+// cria os arquivos do teste (nomes únicos, para poder rodar várias vezes)
 export function setup() {
-    const name = `carga-${Date.now()}.c`;
-    const res = http.post(`${SOURCE}/source`, JSON.stringify({ filename: name, content: CODIGO }), {
-        headers: headers("setup", { "Content-Type": "application/json" }),
-    });
-    if (res.status !== 201) {
-        throw new Error(`setup falhou: ${res.status} ${res.body}. O ambiente está de pé? (docker compose ps)`);
-    }
-    return { id: res.json("id"), name };
+    const stamp = Date.now();
+    const criar = (filename, content) => {
+        const res = http.post(`${SOURCE}/source`, JSON.stringify({ filename, content }), {
+            headers: headers("setup", { "Content-Type": "application/json" }),
+        });
+        if (res.status !== 201) {
+            throw new Error(`setup falhou: ${res.status} ${res.body}. O ambiente está de pé? (docker compose ps)`);
+        }
+        return res.json("id");
+    };
+    // o .h precisa se chamar calc.h por causa do #include; se já existir, reaproveita
+    let headerId = null;
+    const lista = http.get(`${SOURCE}/source`).json();
+    const existente = lista.find((s) => s.name === "calc.h");
+    headerId = existente ? existente.id : criar("calc.h", HEADER);
+    const name = `carga-${stamp}.c`;
+    return { id: criar(name, CODIGO), name, headerId, stamp };
 }
 
 export function leitura(data) {
@@ -113,30 +131,39 @@ export function pagina(data) {
 }
 
 export function build(data) {
-    const kind = __ITER % 2 === 0 ? "compila" : "assembla";
-    const started = Date.now();
-    const res = http.post(`${SOURCE}/source/${data.id}/versions/1/builds`, JSON.stringify({ kind }), {
-        headers: headers("build", { "Content-Type": "application/json" }),
-        tags: { endpoint: "build_pedido" },
+    const json = { "Content-Type": "application/json" };
+    const ws = http.post(`${WORKSPACE}/workspaces`, JSON.stringify({ name: `k6-${data.stamp}-${__VU}-${__ITER}` }), {
+        headers: headers("build", json), tags: { endpoint: "workspace_criar" },
     });
-    if (!check(res, { "build aceito (202)": (r) => r.status === 202 })) {
+    if (!check(ws, { "workspace criado (201)": (r) => r.status === 201 })) {
         return;
     }
-    const buildId = res.json("id");
+    const wsId = ws.json("id");
+    for (const sourceId of [data.id, data.headerId]) {
+        http.post(`${WORKSPACE}/workspaces/${wsId}/files`, JSON.stringify({ source_id: sourceId }), {
+            headers: headers("build", json), tags: { endpoint: "workspace_incluir" },
+        });
+    }
+    const started = Date.now();
+    const res = http.post(`${WORKSPACE}/workspaces/${wsId}/compilar`, null, {
+        headers: headers("build"), tags: { endpoint: "workspace_compilar" },
+    });
+    if (!check(res, { "compilação aceita (202)": (r) => r.status === 202 })) {
+        return;
+    }
 
     // acompanha como a interface faz (polling), por até 20 s
     for (let i = 0; i < 100; i++) {
         sleep(0.2);
-        const st = http.get(`${SOURCE}/builds/${buildId}`, {
-            headers: headers("build"),
-            tags: { endpoint: "build_status" },
+        const st = http.get(`${WORKSPACE}/workspaces/${wsId}`, {
+            headers: headers("build"), tags: { endpoint: "workspace_status" },
         });
         const status = st.status === 200 ? st.json("status") : null;
-        if (status && status !== "pendente") {
-            buildTurnaround.add(Date.now() - started, { kind });
-            check(status, { "build concluído com ok": (s) => s === "ok" });
+        if (status && status !== "na_fila") {
+            buildTurnaround.add(Date.now() - started);
+            check(status, { "workspace compilado": (s) => s === "compilado" });
             return;
         }
     }
-    check(null, { "build concluído com ok": () => false });
+    check(null, { "workspace compilado": () => false });
 }

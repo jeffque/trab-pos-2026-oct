@@ -14,7 +14,7 @@ Público secundário: banca/professor da disciplina de Arquitetura de Microsserv
 
 ## Product Purpose
 
-Plataforma de armazenamento e versionamento de arquivos-fonte (C), construída como microsserviços: `blob-service` guarda bytes opacos, `source-service` guarda nomes e versões, `bff` serve a interface web. Sucesso: salvar um arquivo, encontrá-lo de novo e ler qualquer versão dele com o mínimo de atrito.
+Toolchain C em microsserviços: `blob-service` guarda bytes opacos, `source-service` guarda fontes e revisões, `workspace-service` compila conjuntos de fontes em arquivos objeto, `assemblage-service` linka objetos em executáveis, `bff` serve a interface web. Sucesso: ir de fontes versionadas a um executável com o mínimo de atrito.
 
 ## Operating Context
 
@@ -24,10 +24,11 @@ Plataforma de armazenamento e versionamento de arquivos-fonte (C), construída c
 
 ## Capabilities and Constraints
 
-- Funciona hoje: criar arquivo (REV 1), salvar nova revisão (REV n+1, via `POST /source/:id/versions`), listar arquivos, ler o conteúdo de qualquer revisão.
-- Compilar e assemblar (assíncrono): o source-service publica o pedido nas filas `compila`/`assembla` do RabbitMQ; o `build-worker` roda o gcc (C17, `-Wall -Wextra`), guarda a saída no blob-service e devolve status e log. Compilar gera um binário estático para Linux x86-64; Assemblar gera assembly (sintaxe Intel). O programa compilado nunca é executado no servidor.
+- Fontes: criar arquivo (REV 1), salvar nova revisão (REV n+1), listar, ler qualquer revisão.
+- Workspaces: conjunto de fontes `.c`/`.h`, cada uma fixa numa revisão; ciclo rascunho → na fila → compilado/erro. Compilar publica na fila `compila`; o `compila-worker` roda `gcc -c` (+ `ld -r`) e devolve o evento `compilacao.resultado`, que vincula o arquivo objeto (`.o`) ao workspace.
+- Assemblagens: conjunto de objetos de workspaces compilados, linkado num executável estático pelo `assembla-worker` (fila `assembla`, evento `assemblagem.resultado`). O programa nunca é executado no servidor.
 - Revisões não guardam data nem descrição; a interface não as inventa.
-- Nome de arquivo é único.
+- Nome de arquivo, workspace e assemblagem é único.
 - Interface em português.
 - Sem framework de frontend; HTMX + templates Liquid.
 

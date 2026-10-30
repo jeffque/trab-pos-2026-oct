@@ -1,9 +1,9 @@
 # Registro de Fontes
 
-Plataforma para guardar arquivos de código C com histórico de revisões e, a partir de qualquer revisão, **compilar** (log do gcc + binário) ou **gerar o assembly**. Construída como microsserviços para a disciplina *Arquitetura de Microsserviços e Escalabilidade* (Pós Unifor 2026.2).
+Uma toolchain C em microsserviços: **fontes** `.c`/`.h` com histórico de revisões, **workspaces** que compilam um conjunto de fontes num arquivo objeto (`.o`) e **assemblagens** que linkam objetos num executável. Compilar e linkar são assíncronos (RabbitMQ), com o resultado voltando por evento. Construída para a disciplina *Arquitetura de Microsserviços e Escalabilidade* (Pós Unifor 2026.2).
 
 - Arquitetura, SLOs, observabilidade e segurança: [`docs/arquitetura.md`](docs/arquitetura.md)
-- Decisões arquiteturais: [`docs/ADR-001.md`](docs/ADR-001.md) … [`docs/ADR-010.md`](docs/ADR-010.md)
+- Decisões arquiteturais: [`docs/ADR-001.md`](docs/ADR-001.md) … [`docs/ADR-011.md`](docs/ADR-011.md)
 - Teste de carga: [`testes/carga.js`](testes/carga.js) e [`docs/resultados-carga.md`](docs/resultados-carga.md)
 
 ## Membros do grupo
@@ -14,7 +14,7 @@ Plataforma para guardar arquivos de código C com histórico de revisões e, a p
 
 ## Como rodar
 
-Pré-requisito: Docker com Compose v2. As portas 3000, 3001, 3002, 3003 e 15672 precisam estar livres.
+Pré-requisito: Docker com Compose v2. As portas 3000 a 3005 e 15672 precisam estar livres.
 
 ```bash
 docker compose up --build
@@ -29,24 +29,33 @@ Na primeira vez demora alguns minutos (instalação das dependências e do gcc n
 | Painel do RabbitMQ (guest / guest) | http://localhost:15672 |
 | API do source-service (via load balancer) | http://localhost:3002 |
 | API do blob-service (via load balancer) | http://localhost:3001 |
+| API do workspace-service | http://localhost:3004 |
+| API do assemblage-service | http://localhost:3005 |
 
 Parar e apagar tudo (os dados não são persistidos): `docker compose down`.
 
 ## Serviços
 
 ```
-navegador → bff → source-lb → source-service ×2 → postgres-sources
-                                   ├→ blob-lb → blob-service ×2 → postgres-blob
-                                   └→ rabbitmq (compila / assembla) → compila-worker, assembla-worker
+navegador → bff ─┬→ source-lb → source-service ×2 → postgres-sources
+                 ├→ workspace-service → postgres-workspaces
+                 └→ assemblage-service → postgres-assemblages
+source-service e workers → blob-lb → blob-service ×2 → postgres-blob
+
+workspace-service  ── fila compila  ──→ compila-worker  ── evento compilacao.resultado ──→ workspace-service
+assemblage-service ── fila assembla ──→ assembla-worker ── evento assemblagem.resultado ──→ assemblage-service
+
 logs: todos os containers → alloy → loki → grafana
 ```
 
 | Pasta | Serviço | Responsabilidade |
 |---|---|---|
 | [`bff/`](bff) | `bff` | Interface web (Express + Liquid + HTMX) |
-| [`source-service/`](source-service) | `source-service` | Arquivos, revisões e pedidos de build |
+| [`source-service/`](source-service) | `source-service` | Fontes e revisões |
+| [`workspace-service/`](workspace-service) | `workspace-service` | Workspaces (fontes em revisões fixas → arquivo objeto) |
+| [`assemblage-service/`](assemblage-service) | `assemblage-service` | Assemblagens (objetos → executável) |
 | [`blob-service/`](blob-service) | `blob-service` | Armazenamento de bytes opacos por UUID |
-| [`build-worker/`](build-worker) | `compila-worker`, `assembla-worker` | Consomem as filas e rodam o gcc |
+| [`build-worker/`](build-worker) | `compila-worker`, `assembla-worker` | Consomem as filas, rodam gcc/ld e publicam o evento de resultado |
 | [`load-balancer/`](load-balancer) | `source-lb`, `blob-lb` | nginx com round-robin entre réplicas |
 | [`postgres-schemas/`](postgres-schemas) | `postgres-*` | Criação dos schemas/tabelas de cada banco |
 | [`observability/`](observability) | `alloy`, `loki`, `grafana` | Coleta e consulta de logs |
@@ -64,11 +73,27 @@ Todos os serviços HTTP têm `GET /health/live` (processo de pé) e `GET /health
 | `GET /source/:id` | Nome e lista de revisões |
 | `POST /source/:id/versions` `{content}` | Cria a REV n+1 → `201 {id, version}` |
 | `GET /content/:nome/:rev` | Conteúdo de uma revisão |
-| `POST /source/:id/versions/:rev/builds` `{kind: "compila" \| "assembla"}` | Pede build → `202` (vai para a fila) |
-| `GET /source/:id/builds?version=N` | Builds de uma revisão (status `pendente`, `ok`, `erro`) |
-| `GET /builds/:id` | Status, log do gcc e tamanho do artefato |
-| `GET /builds/:id/content` | Artefato gerado (binário ou `.s`) |
-| `PUT /builds/:id` | Uso interno: resultado enviado pelo worker |
+
+### workspace-service (`localhost:3004`)
+
+| Método e rota | Descrição |
+|---|---|
+| `GET /workspaces` (`?source_id=` filtra quem usa uma fonte) | Lista workspaces |
+| `POST /workspaces` `{name}` | Cria em `rascunho` → `201` |
+| `GET /workspaces/:id` | Estado, fontes fixadas, log do gcc |
+| `POST /workspaces/:id/files` `{source_id, version?}` | Inclui (ou troca a revisão de) um `.c`/`.h`; sem `version` = última |
+| `DELETE /workspaces/:id/files/:sourceId` | Remove uma fonte |
+| `POST /workspaces/:id/compilar` | Workspace pronto → fila `compila` → `202` |
+| `GET /workspaces/:id/objeto` | Arquivo objeto (`.o`) gerado |
+
+### assemblage-service (`localhost:3005`)
+
+| Método e rota | Descrição |
+|---|---|
+| `GET /assemblages` | Lista assemblagens |
+| `POST /assemblages` `{name, workspace_ids}` | Linka os objetos de workspaces compilados → fila `assembla` → `202` |
+| `GET /assemblages/:id` | Estado, objetos usados, log do linker |
+| `GET /assemblages/:id/executavel` | Executável gerado |
 
 ### blob-service (`localhost:3001`)
 
@@ -83,39 +108,45 @@ Todos os serviços HTTP têm `GET /health/live` (processo de pé) e `GET /health
 
 | Rota | Tela / ação |
 |---|---|
-| `GET /` | Registro de arquivos |
-| `GET /novo`, `POST /novo` | Criar arquivo |
-| `GET /source/:id?rev=N` | Prancha com o código da revisão |
-| `POST /source/:id/revisoes` | Salvar nova revisão (Ctrl+S) |
-| `POST /source/:id/emitir` | Pedir compilação/assembly |
-| `GET /source/:id/saida/:buildId` | Log do gcc, assembly ou download do binário |
+| `GET /`, `/novo`, `/source/:id?rev=N` | Arquivos: registro, criação e prancha com o código (Ctrl+S salva nova revisão) |
+| `GET /workspaces`, `/workspaces/novo`, `/workspaces/:id` | Workspaces: montar, fixar revisões e compilar |
+| `GET /assemblagens`, `/assemblagens/novo`, `/assemblagens/:id` | Assemblagens: escolher objetos, linkar e baixar o executável |
 
 ### Exemplo pela API
 
 ```bash
-curl -X POST localhost:3002/source -H 'Content-Type: application/json' \
-  -d '{"filename":"ola.c","content":"#include <stdio.h>\nint main(void){puts(\"ola\");}\n"}'
-# → {"id":"<uuid>","version":1}
-
-curl -X POST localhost:3002/source/<uuid>/versions/1/builds -H 'Content-Type: application/json' -d '{"kind":"assembla"}'
-curl "localhost:3002/source/<uuid>/builds?version=1"
+# fontes
+H=$(curl -s -X POST localhost:3002/source -H 'Content-Type: application/json' \
+  -d '{"filename":"soma.h","content":"int soma(int a, int b);\n"}' | jq -r .id)
+C=$(curl -s -X POST localhost:3002/source -H 'Content-Type: application/json' \
+  -d '{"filename":"soma.c","content":"#include \"soma.h\"\nint soma(int a, int b) { return a + b; }\n"}' | jq -r .id)
+# workspace: inclui as fontes e compila
+W=$(curl -s -X POST localhost:3004/workspaces -H 'Content-Type: application/json' -d '{"name":"biblioteca"}' | jq -r .id)
+curl -s -X POST localhost:3004/workspaces/$W/files -H 'Content-Type: application/json' -d "{\"source_id\":\"$C\"}"
+curl -s -X POST localhost:3004/workspaces/$W/files -H 'Content-Type: application/json' -d "{\"source_id\":\"$H\"}"
+curl -s -X POST localhost:3004/workspaces/$W/compilar
+curl -s localhost:3004/workspaces/$W | jq .status          # "compilado"
+# assemblagem: junte com um workspace que tenha main() e linke
+curl -s -X POST localhost:3005/assemblages -H 'Content-Type: application/json' -d "{\"name\":\"programa\",\"workspace_ids\":[\"$W\",\"<workspace com main>\"]}"
 ```
 
 ## Roteiro da demonstração
 
 1. `docker compose up --build` e `docker compose ps` (todos `healthy`).
-2. Na aplicação: criar `soma.c`, salvar uma REV 2 (Ctrl+S), voltar para a REV 1.
-3. **Compilar** e **Assemblar**: ver "na fila…" virar resultado; abrir o assembly; mostrar um erro de compilação.
-4. Clicar em **logs** num build: o Grafana mostra o mesmo Correlation ID passando por bff, source-lb, source-service, worker, blob-lb e blob-service.
-5. Balanceamento e falha:
+2. **Arquivos**: criar `calc.h`, `calc.c` (funções) e `app.c` (com `main`); salvar uma REV 2 de `calc.c` (Ctrl+S).
+3. **Workspaces**: `calc-lib` com `calc.c` + `calc.h`; `calc-app` com `app.c` + `calc.h`. Compilar os dois: "na fila" vira "compilado" quando o evento volta. Mostrar um workspace com erro do gcc.
+4. **Assemblagens**: `calculadora` com os dois objetos → baixar o executável e rodar no terminal.
+5. Clicar em **logs** numa compilação: o Grafana mostra o mesmo Correlation ID em bff, workspace-service, compila-worker, source-lb, source-service, blob-lb e blob-service, até o evento voltar.
+6. Balanceamento e falha:
    ```bash
    for i in 1 2 3 4; do curl -sI localhost:3002/source | grep X-Upstream; done   # alterna entre réplicas
    docker stop trab-pos-2026-oct-source-service-1                              # a aplicação continua respondendo
+   docker compose restart postgres-sources                                      # o serviço sobrevive ao reinício do banco
    curl -s localhost:3002/health/ready                                          # estado das dependências
    ```
-6. Escala: `docker compose up -d --scale compila-worker=3` e o painel do RabbitMQ.
-7. Teste de carga: `docker run --rm -i --network host grafana/k6 run - < testes/carga.js`.
+7. Escala: `docker compose up -d --scale compila-worker=3` e o painel do RabbitMQ (filas de trabalho e de eventos).
+8. Teste de carga: `docker run --rm -i --network host grafana/k6 run - < testes/carga.js`.
 
 ## Desenvolvimento
 
-Cada serviço Node roda com `npm run dev` (nodemon + tsc) e lê a configuração de variáveis de ambiente (`.env.example` em cada pasta). As URLs entre serviços vêm de `docker.env` (`BLOB_MODULE`, `SOURCE_MODULE`, `RABBIT_URL`).
+Cada serviço Node roda com `npm run dev` (nodemon + tsc) e lê a configuração de variáveis de ambiente (`.env.example` em cada pasta). As URLs entre serviços vêm de `docker.env` (`BLOB_MODULE`, `SOURCE_MODULE`, `WORKSPACE_MODULE`, `ASSEMBLAGE_MODULE`, `RABBIT_URL`).
