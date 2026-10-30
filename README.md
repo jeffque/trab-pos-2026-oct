@@ -19,7 +19,10 @@ Construída para a disciplina *Arquitetura de Microsserviços e Escalabilidade* 
 
 | Nome | GitHub |
 |---|---|
-| _a preencher_ | |
+| Williame Correia | @WilliameCorreia | 
+| Arion Mathias  | | 
+| Jefferson Quesado  | @jeffque | 
+| Janderson Siqueira  | | 
 
 ## Como rodar
 
