@@ -2,3 +2,8 @@
 node_modules/
 .*.sw[po]
 pgdata
+
+# material das aulas (não versionar)
+docs/*.pdf
+# dados internos da ferramenta de design (impeccable)
+.impeccable/
