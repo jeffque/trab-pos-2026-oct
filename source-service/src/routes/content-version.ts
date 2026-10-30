@@ -12,7 +12,6 @@ router.get("/:name/:version", async (req, res) => {
         return res.sendStatus(404);
     }
     const versions: { version: number, blob_id: string}[] = rs.rows[0]["versions"]
-    console.log(versions)
 
     const selectedVersion = versions.filter(l => l.version.toString() == req.params.version).map(l => l.blob_id)
 
@@ -23,8 +22,10 @@ router.get("/:name/:version", async (req, res) => {
     const indeedVersion: string = selectedVersion[0]!
     
 
-    console.log(selectedVersion)
     const blob = await client.fetch(indeedVersion);
-    console.log({blob})
+    if (!blob) {
+        // blob-service fora do ar ou lento: falha explícita em vez de um 200 vazio
+        return res.sendStatus(502);
+    }
     res.status(200).send(blob)
 })

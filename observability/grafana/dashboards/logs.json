@@ -1,0 +1,169 @@
+{
+  "uid": "logs-fontes",
+  "title": "Logs",
+  "description": "Logs de todos os serviços. Cole um Correlation ID para seguir um pedido de ponta a ponta.",
+  "editable": true,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "tags": [
+    "fontes"
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "textbox",
+        "name": "cid",
+        "label": "Correlation ID",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "service",
+        "label": "Serviço",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "query": "bff,source-lb,source-service,workspace-service,assemblage-service,blob-lb,blob-service,compila-worker,assembla-worker,rabbitmq,postgres-sources,postgres-workspaces,postgres-assemblages,postgres-blob",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Linhas de log por serviço",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (service) (count_over_time({project=\"trab-pos-2026-oct\", service=~\"$service\"} |= \"$cid\" [$__auto]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Erros por serviço (level=error)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (service) (count_over_time({project=\"trab-pos-2026-oct\", service=~\"$service\", level=\"error\"} |= \"$cid\" [$__auto]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Logs (mais recentes primeiro)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 18
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{project=\"trab-pos-2026-oct\", service=~\"$service\"} |= \"$cid\" | json | __error__=\"\" | line_format \"{{.service}}  {{.level}}  {{.msg}}  {{with .method}}{{.}} {{end}}{{with .path}}{{.}} {{end}}{{with .status}}→ {{.}} {{end}}{{with .build_id}}build={{.}} {{end}}{{with .duration_ms}}({{.}} ms){{end}}\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false
+      }
+    }
+  ]
+}
