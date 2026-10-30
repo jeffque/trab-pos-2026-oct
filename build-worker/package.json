@@ -1,0 +1,24 @@
+{
+  "name": "build-worker",
+  "version": "0.0.1",
+  "description": "Worker que consome as filas compila/assembla e roda o gcc",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon --exec \"tsc && node dist/index.js\" --watch src/ -e js,ts",
+    "clear": "rm -rf ./dist/*"
+  },
+  "dependencies": {
+    "amqplib": "^2.2.0",
+    "dotenv": "^18.0.8",
+    "pino": "^10.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "nodemon": "^3.1.14",
+    "typescript": "^7.0.2"
+  }
+}
