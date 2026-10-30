@@ -3,8 +3,8 @@
 Uma toolchain C em microsserviços: **fontes** `.c`/`.h` com histórico de revisões, **workspaces** que compilam um conjunto de fontes num arquivo objeto (`.o`) e **assemblagens** que linkam objetos num executável. Compilar e linkar são assíncronos (RabbitMQ), com o resultado voltando por evento. Construída para a disciplina *Arquitetura de Microsserviços e Escalabilidade* (Pós Unifor 2026.2).
 
 - Arquitetura, SLOs, observabilidade e segurança: [`docs/arquitetura.md`](docs/arquitetura.md)
-- Decisões arquiteturais: [`docs/ADR-001.md`](docs/ADR-001.md) … [`docs/ADR-011.md`](docs/ADR-011.md)
-- Teste de carga: [`testes/carga.js`](testes/carga.js) e [`docs/resultados-carga.md`](docs/resultados-carga.md)
+- Decisões arquiteturais: [`docs/ADR-001.md`](docs/ADR-001.md) … [`docs/ADR-012.md`](docs/ADR-012.md)
+- SLOs e testes de carga: [`docs/slos.md`](docs/slos.md) (protocolo do grupo, [`testes/slo-source.js`](testes/slo-source.js)) e [`docs/resultados-carga.md`](docs/resultados-carga.md) ([`testes/carga.js`](testes/carga.js))
 
 ## Membros do grupo
 
@@ -145,7 +145,12 @@ curl -s -X POST localhost:3005/assemblages -H 'Content-Type: application/json' -
    curl -s localhost:3002/health/ready                                          # estado das dependências
    ```
 7. Escala: `docker compose up -d --scale compila-worker=3` e o painel do RabbitMQ (filas de trabalho e de eventos).
-8. Teste de carga: `docker run --rm -i --network host grafana/k6 run - < testes/carga.js`.
+8. Testes de carga:
+   ```bash
+   docker run --rm -i --network host grafana/k6 run - < testes/carga.js          # misto, ~70 s
+   docker run --rm -i --network host --user "$(id -u):$(id -g)" -v "$PWD/testes/resultados:/out" \
+     grafana/k6 run - < testes/slo-source.js                                       # protocolo do SLO, ~6 min
+   ```
 
 ## Desenvolvimento
 

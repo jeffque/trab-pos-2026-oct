@@ -3,9 +3,9 @@
 //   - 30 s de aquecimento (fora do resultado) + 5 min a 20 req/s constantes = 6.000 planejadas
 //   - timeout de 2 s; sucesso = HTTP 200 + JSON válido + id igual ao pedido
 //
-//   docker run --rm -i --network host -v "$PWD/testes:/out" grafana/k6 run - < testes/slo-source.js
+//   docker run --rm -i --network host --user "$(id -u):$(id -g)" -v "$PWD/testes/resultados:/out" grafana/k6 run - < testes/slo-source.js
 //
-// O resumo vai para a saída e para testes/slo-source-resultado.json.
+// O resumo vai para a saída e para testes/resultados/slo-source-resultado.json.
 
 import http from "k6/http";
 import { check } from "k6";

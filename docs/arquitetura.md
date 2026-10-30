@@ -197,13 +197,14 @@ SLIs medidos do ponto de vista do usuário, em cima do load balancer, do BFF ou 
 
 | SLI | SLO | Justificativa |
 |---|---|---|
+| Latência de `GET /source/:id` (consulta de metadados), com o protocolo de [`slos.md`](slos.md) | **p50 ≤ 100 ms, p95 ≤ 300 ms, p99 ≤ 800 ms; sucesso ≥ 99 %; ≥ 19,8 resp/s úteis a 20 req/s** | proposta do grupo, com protocolo rigoroso (100 fontes, aquecimento, 5 min a taxa fixa, timeout de 2 s) |
 | Latência de `GET /content/:nome/:rev` (leitura de conteúdo, passa por source + blob) | **p95 < 100 ms, p99 < 250 ms** | é a operação mais frequente; passa por 2 serviços e 2 LBs |
 | Latência de `GET /source/:id` no BFF (página do arquivo) | **p95 < 200 ms, p99 < 500 ms** | tela interativa; consulta source, blob e workspace |
 | Taxa de erro HTTP (5xx) nas leituras | **< 1 %** | |
 | Compilação de workspace (pedido → objeto vinculado pelo evento), `compiled_at - queued_at` | **95 % em < 5 s** | assíncrono; o usuário vê "na fila" |
 | Disponibilidade mensal da leitura | **99,5 %** | ambiente acadêmico, sem plantão |
 
-**Medição:** teste de carga com k6 em [`../testes/carga.js`](../testes/carga.js); resultados e conclusão sobre aderência aos SLOs em [`resultados-carga.md`](resultados-carga.md).
+**Medição:** dois testes com k6. O protocolo de metadados está em [`../testes/slo-source.js`](../testes/slo-source.js), com relatório em [`slos.md`](slos.md). O teste misto (leitura de conteúdo, página e compilação) está em [`../testes/carga.js`](../testes/carga.js), com resultados em [`resultados-carga.md`](resultados-carga.md).
 
 ### Disponibilidade composta
 
@@ -214,6 +215,7 @@ Uma leitura de conteúdo atravessa em série: `source-lb → source-service → 
 
 Testes práticos:
 - **Failover de réplica:** com uma réplica de source **e** uma de blob derrubadas (`docker stop`), 20 de 20 leituras responderam 200. Ao religar, as réplicas voltaram a receber tráfego sem reiniciar o nginx (o LB reconsulta o DNS do Docker a cada 5 s).
+- **Dependência fora do ar:** com as duas réplicas do blob-service paradas, `GET /content` responde **502 em 1 s** e o `/health/ready` do source fica `degraded`. Antes, respondia 200 com corpo vazio. Toda chamada interna tem timeout (2 s entre serviços, 5 s no BFF, 10 s nos workers).
 - **Reinício de banco:** com `docker compose restart postgres-sources`, o source-service continuou respondendo (6 de 6). Esse teste revelou um bug: sem tratar o evento `error` do pool do `pg`, uma conexão ociosa derrubada pelo banco **matava o processo Node**. Corrigido nos quatro serviços com banco.
 
 ## 8. Observabilidade ([ADR-009](ADR-009.md))
@@ -286,3 +288,6 @@ Testes práticos:
 | [ADR-009](ADR-009.md) | Logs JSON com Correlation ID centralizados em Loki/Grafana | Accepted |
 | [ADR-010](ADR-010.md) | Conteúdo em `BYTEA` no Postgres e revisões em array JSONB | Accepted |
 | [ADR-011](ADR-011.md) | Workspaces e assemblagens como serviços, com resultado por evento na fila | Accepted |
+| [ADR-012](ADR-012.md) | Docker Compose para reproduzir o ambiente local | Accepted |
+
+Os ADR-001, ADR-003 e ADR-012 incorporam a análise que o grupo fez sobre o commit original (seção “Revisões” de cada um).

@@ -1,6 +1,6 @@
 # Resultados do teste de carga
 
-Script: [`testes/carga.js`](../testes/carga.js) (k6). SLOs: [arquitetura.md, seção 7](arquitetura.md#7-requisitos-não-funcionais-e-slos).
+Script: [`testes/carga.js`](../testes/carga.js) (k6). SLOs: [arquitetura.md, seção 7](arquitetura.md#7-requisitos-não-funcionais-e-slos). O SLO de consulta de metadados, com o protocolo proposto pelo grupo, tem relatório próprio em [`slos.md`](slos.md).
 
 ```bash
 docker compose up --build -d          # ambiente completo, todos healthy
