@@ -32,7 +32,7 @@
         "multi": true,
         "includeAll": true,
         "allValue": ".*",
-        "query": "bff,source-lb,source-service,blob-lb,blob-service,compila-worker,assembla-worker,rabbitmq,postgres-sources,postgres-blob",
+        "query": "bff,source-lb,source-service,workspace-service,assemblage-service,blob-lb,blob-service,compila-worker,assembla-worker,rabbitmq,postgres-sources,postgres-workspaces,postgres-assemblages,postgres-blob",
         "current": {
           "text": [
             "All"
