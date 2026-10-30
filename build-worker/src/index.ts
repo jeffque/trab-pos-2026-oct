@@ -81,7 +81,7 @@ function clip(text: string): string {
 }
 
 async function fetchSource(name: string, version: number): Promise<string> {
-    const response = await fetch(`${SOURCE_URL}content/${encodeURIComponent(name)}/${version}`, { headers: correlationHeaders() })
+    const response = await fetch(`${SOURCE_URL}content/${encodeURIComponent(name)}/${version}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(10_000) })
     if (!response.ok) {
         throw new Error(`source-service respondeu ${response.status} ao buscar ${name} REV ${version}`)
     }
@@ -89,7 +89,7 @@ async function fetchSource(name: string, version: number): Promise<string> {
 }
 
 async function fetchBlob(id: string): Promise<Buffer> {
-    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(10_000) })
     if (!response.ok) {
         throw new Error(`blob-service respondeu ${response.status} ao buscar o objeto ${id}`)
     }
@@ -100,7 +100,8 @@ async function pushBlob(bytes: Buffer): Promise<string> {
     const response = await fetch(`${BLOB_URL}blob`, {
         method: "POST",
         headers: correlationHeaders({ "Content-type": "application/octet-stream" }),
-        body: new Uint8Array(bytes)
+        body: new Uint8Array(bytes),
+        signal: AbortSignal.timeout(10_000)
     })
     if (!response.ok) {
         throw new Error(`blob-service respondeu ${response.status}`)

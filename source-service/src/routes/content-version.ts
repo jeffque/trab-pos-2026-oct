@@ -23,5 +23,9 @@ router.get("/:name/:version", async (req, res) => {
     
 
     const blob = await client.fetch(indeedVersion);
+    if (!blob) {
+        // blob-service fora do ar ou lento: falha explícita em vez de um 200 vazio
+        return res.sendStatus(502);
+    }
     res.status(200).send(blob)
 })

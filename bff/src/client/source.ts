@@ -17,7 +17,7 @@ export class SourceError extends Error {
 
 export async function request(path: string, init?: RequestInit): Promise<Response> {
     try {
-        return await fetch(`${SOURCE_URL}${path}`, { ...init, headers: correlationHeaders(init?.headers) })
+        return await fetch(`${SOURCE_URL}${path}`, { ...init, headers: correlationHeaders(init?.headers), signal: AbortSignal.timeout(5000) })
     } catch {
         throw new SourceError(`source-service inacessível em ${SOURCE_URL}`, 503)
     }

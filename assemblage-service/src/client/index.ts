@@ -9,7 +9,7 @@ const BLOB_URL = process.env.BLOB_MODULE ?? "http://localhost:3001/"
 export type Workspace = { id: string, name: string, status: string, object_blob_id: string | null }
 
 export async function getWorkspace(id: string): Promise<Workspace | null> {
-    const response = await fetch(`${WORKSPACE_URL}workspaces/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    const response = await fetch(`${WORKSPACE_URL}workspaces/${encodeURIComponent(id)}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(2000) })
     if (response.status == 404) {
         return null
     }
@@ -20,7 +20,7 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
 }
 
 export async function blobContent(id: string): Promise<ArrayBuffer | null> {
-    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(2000) })
     return response.ok ? response.arrayBuffer() : null
 }
 

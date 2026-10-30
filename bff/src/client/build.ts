@@ -23,7 +23,7 @@ export type Assemblage = {
 
 async function call(base: string, service: string, path: string, init?: RequestInit): Promise<Response> {
     try {
-        return await fetch(`${base}${path}`, { ...init, headers: correlationHeaders(init?.headers) })
+        return await fetch(`${base}${path}`, { ...init, headers: correlationHeaders(init?.headers), signal: AbortSignal.timeout(5000) })
     } catch {
         throw new SourceError(`${service} inacessível em ${base}`, 503)
     }

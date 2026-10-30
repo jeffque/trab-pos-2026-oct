@@ -9,7 +9,7 @@ const BLOB_URL = process.env.BLOB_MODULE ?? "http://localhost:3001/"
 export type Source = { id: string, name: string, versions: { version: number }[] }
 
 export async function getSource(id: string): Promise<Source | null> {
-    const response = await fetch(`${SOURCE_URL}source/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    const response = await fetch(`${SOURCE_URL}source/${encodeURIComponent(id)}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(2000) })
     if (response.status == 404 || response.status == 500) {
         return null
     }
@@ -20,7 +20,7 @@ export async function getSource(id: string): Promise<Source | null> {
 }
 
 export async function blobContent(id: string): Promise<ArrayBuffer | null> {
-    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders(), signal: AbortSignal.timeout(2000) })
     return response.ok ? response.arrayBuffer() : null
 }
 
