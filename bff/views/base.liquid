@@ -1,13 +1,25 @@
-<html>
+<!DOCTYPE html>
+<html lang="pt-BR">
     <head>
-        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js" 
-          integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg"
-          crossorigin="anonymous"></script>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":false}],"globalViewTransitions":false}'>
+        <title>{% if file %}{{ file.name }} · REV {{ selected }} — {% endif %}Registro de fontes</title>
+        <link rel="preload" href="/vendor/fonts/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="stylesheet" href="/app.css">
+        <script src="/vendor/htmx/htmx.min.js" defer></script>
+        <script src="/app.js" defer></script>
     </head>
-    <body>
-        <ul hx-boost="true" hx-swap="innerHTML" hx-target="#content">
-            <li><a href="/source/13">Source 13</a></li>
-        </ul>
-        <div id="content">{% block content %}{% endblock %}</div>
+    <body hx-boost="true" hx-target="#app" hx-select="#app" hx-swap="outerHTML transition:true">
+        <!--
+        THESIS: cada arquivo-fonte é uma prancha de desenho técnico; versões são revisões no carimbo. Recusa o IDE escuro com árvore e abas.
+        OWN-WORLD: papel frio #F3F5F4, traço #16191D, malha de zonas A–D / 1–6, carimbo em grade de linhas finas, triângulo de revisão; vermelho de revisão #D2361F só na revisão ativa e na ação primária. Barlow / Barlow Semi Condensed / JetBrains Mono.
+        STORY: o dev acha o arquivo no registro, lê e edita o código na prancha, salva como nova REV e navega pelas revisões; compilar/assemblar aparecem como emissões ainda indisponíveis.
+        FIRST VIEWPORT: registro à esquerda (Novo arquivo no topo), prancha com código ao centro ocupando a altura toda, revisões + emissões + carimbo à direita.
+        FORM: Folha de desenho técnico, candidato 3 da lista; seed 3940327a.
+        FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+        -->
+        {% block content %}{% endblock %}
     </body>
 </html>

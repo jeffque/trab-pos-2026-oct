@@ -1,0 +1,288 @@
+{% layout "base.liquid" %}
+{% block content %}
+{% assign hasFile = false %}{% if mode == "view" or mode == "output" %}{% assign hasFile = true %}{% endif %}
+<div id="app" class="app" data-mode="{{ mode }}">
+
+    <aside class="register" aria-labelledby="register-title">
+        <header class="register__head">
+            <h1 id="register-title" class="register__title">Registro de fontes</h1>
+            <p class="register__count">{{ files.size }} {% if files.size == 1 %}arquivo{% else %}arquivos{% endif %}</p>
+        </header>
+
+        <a class="btn btn--primary btn--block" href="/novo" {% if mode == "new" %}aria-current="page"{% endif %}>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+            Novo arquivo
+        </a>
+
+        {% if files.size > 4 %}
+        <label class="filter">
+            <span class="visually-hidden">Filtrar arquivos</span>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+            <input type="search" placeholder="Filtrar por nome" data-filter autocomplete="off">
+        </label>
+        {% endif %}
+
+        {% if registerError %}
+        <div class="alert" role="alert">
+            <p class="alert__title">Registro indisponível</p>
+            <p>{{ registerError }}.</p>
+            <p>Confira se o container está de pé com <code>docker compose ps</code>.</p>
+        </div>
+        {% elsif files.size == 0 %}
+        <p class="register__empty">Nenhum arquivo registrado ainda.</p>
+        {% else %}
+        <table class="ledger">
+            <thead>
+                <tr><th scope="col">Nº</th><th scope="col">Arquivo</th><th scope="col"><abbr title="Revisão mais recente">Rev</abbr></th></tr>
+            </thead>
+            <tbody>
+                {% for f in files %}
+                <tr class="ledger__row{% if f.current %} is-current{% endif %}" data-name="{{ f.name | downcase }}">
+                    <td class="ledger__no">{{ f.short }}</td>
+                    <td class="ledger__name"><a href="/source/{{ f.id }}" {% if f.current %}aria-current="page"{% endif %}>{{ f.name }}</a></td>
+                    <td><span class="delta{% if f.current %} delta--active{% endif %}">{{ f.rev }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="register__nomatch" data-nomatch hidden>Nenhum arquivo com esse nome.</p>
+        {% endif %}
+    </aside>
+
+    <main class="sheet" aria-label="Prancha">
+        <div class="sheet__zones sheet__zones--top" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+        <div class="sheet__zones sheet__zones--left" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+        <div class="sheet__zones sheet__zones--right" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+        <div class="sheet__zones sheet__zones--bottom" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+
+        <div class="sheet__frame">
+        {% case mode %}
+        {% when "view" %}
+            <form class="drawing" method="post" action="/source/{{ file.id }}/revisoes" data-editor>
+                <header class="drawing__head">
+                    <h2 class="drawing__title">{{ file.name }}</h2>
+                    <span class="drawing__rev"><span class="delta delta--active">{{ selected }}</span> REV {{ selected }}{% if isOld %} · <a href="/source/{{ file.id }}">ir para a REV {{ newest }}</a>{% endif %}</span>
+                    <span class="drawing__guide" data-guide aria-live="off">L 1–{{ lineCount }} / {{ lineCount }}</span>
+                </header>
+                {% if isOld %}
+                <p class="drawing__note">Você está vendo uma revisão antiga. Salvar cria a REV {{ next }} a partir deste conteúdo; a REV {{ selected }} continua intacta.</p>
+                {% endif %}
+                <div class="editor">
+                    <pre class="editor__gutter" aria-hidden="true" data-gutter>{{ lines }}</pre>
+                    <textarea class="editor__text" name="content" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="Conteúdo de {{ file.name }}, revisão {{ selected }}" data-text>{{ content }}</textarea>
+                </div>
+                <footer class="drawing__foot">
+                    <p class="drawing__status" data-status role="status">{% if notice %}{{ notice }}{% else %}Sem alterações.{% endif %}</p>
+                    <span class="kbd-hint"><kbd>Ctrl</kbd> <kbd>S</kbd></span>
+                    <button class="btn btn--primary" type="submit" disabled data-save>Salvar como REV {{ next }}</button>
+                </footer>
+            </form>
+
+        {% when "new" %}
+            <form class="drawing" method="post" action="/novo" data-editor>
+                <header class="drawing__head">
+                    <label class="drawing__name">
+                        <span class="visually-hidden">Nome do arquivo</span>
+                        <input type="text" name="filename" value="{{ form.filename }}" placeholder="main.c" required autofocus autocomplete="off" spellcheck="false" {% if error %}aria-invalid="true" aria-describedby="form-error"{% endif %}>
+                    </label>
+                    <span class="drawing__rev"><span class="delta">1</span> nasce na REV 1</span>
+                    <span class="drawing__guide" data-guide aria-live="off">L 1–1 / 1</span>
+                </header>
+                {% if error %}
+                <p class="drawing__error" id="form-error" role="alert">{{ error }}</p>
+                {% endif %}
+                <div class="editor">
+                    <pre class="editor__gutter" aria-hidden="true" data-gutter>1</pre>
+                    <textarea class="editor__text" name="content" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="Conteúdo do novo arquivo" placeholder="#include <stdio.h>" data-text data-new>{{ form.content }}</textarea>
+                </div>
+                <footer class="drawing__foot">
+                    <p class="drawing__status" data-status role="status">O conteúdo vai para o blob-service; o registro guarda nome e revisão.</p>
+                    <span class="kbd-hint"><kbd>Ctrl</kbd> <kbd>S</kbd></span>
+                    <button class="btn btn--primary" type="submit" data-save data-always>Registrar arquivo</button>
+                </footer>
+            </form>
+
+        {% when "output" %}
+            <div class="drawing" data-editor>
+                <header class="drawing__head">
+                    <h2 class="drawing__title">{{ file.name }}</h2>
+                    <span class="drawing__kind drawing__kind--{{ build.status }}">{% if build.kind == "assembla" %}Assembly{% else %}Compilação{% endif %}</span>
+                    <span class="drawing__rev"><span class="delta delta--active">{{ selected }}</span> REV {{ selected }}</span>
+                    {% if build.kind == "assembla" and build.status == "ok" %}<span class="drawing__guide" data-guide aria-live="off">L 1–{{ lineCount }} / {{ lineCount }}</span>{% endif %}
+                </header>
+
+                {% if build.status == "erro" %}
+                <p class="drawing__error" role="alert">O gcc não conseguiu {% if build.kind == "assembla" %}gerar o assembly{% else %}compilar{% endif %} a REV {{ selected }}. Corrija o código e salve uma nova revisão.</p>
+                {% elsif build.status == "pendente" %}
+                <p class="drawing__note">Este pedido ainda está na fila. A lista de emissões, ao lado, atualiza sozinha.</p>
+                {% endif %}
+
+                {% if build.log != "" %}
+                <section class="buildlog{% if build.status == "erro" %} buildlog--error{% endif %}" aria-labelledby="log-title">
+                    <h3 class="buildlog__title" id="log-title">Mensagens do gcc</h3>
+                    <pre class="buildlog__text">{{ build.log }}</pre>
+                </section>
+                {% endif %}
+
+                {% if build.status == "ok" and build.kind == "assembla" %}
+                <div class="editor">
+                    <pre class="editor__gutter" aria-hidden="true" data-gutter>{{ lines }}</pre>
+                    <textarea class="editor__text" readonly spellcheck="false" wrap="off" aria-label="Assembly gerado de {{ file.name }}, revisão {{ selected }}" data-text>{{ content }}</textarea>
+                </div>
+                {% elsif build.status == "ok" %}
+                <div class="blank">
+                    <h3 class="blank__title">Binário gerado</h3>
+                    <p>{{ build.size }}, ligado estaticamente para Linux x86-64. Por segurança, o worker só compila: o programa nunca é executado no servidor.</p>
+                    <a class="btn btn--primary" href="{{ build.download }}" hx-boost="false" download>
+                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>
+                        Baixar binário
+                    </a>
+                </div>
+                {% elsif build.log == "" %}
+                <div class="blank"><p>Nenhuma saída registrada.</p></div>
+                {% endif %}
+
+                <footer class="drawing__foot">
+                    <p class="drawing__status">{% if build.status == "ok" and build.log != "" %}Gerado com avisos do gcc.{% elsif build.status == "ok" %}Gerado sem avisos.{% elsif build.status == "erro" %}Falhou.{% else %}Na fila.{% endif %}</p>
+                    {% if build.status == "ok" and build.kind == "assembla" %}
+                    <a class="btn" href="{{ build.download }}" hx-boost="false" download>Baixar .s</a>
+                    {% endif %}
+                    <a class="btn" href="/source/{{ file.id }}?rev={{ selected }}">Voltar ao código</a>
+                </footer>
+            </div>
+
+        {% when "missing" %}
+            <div class="blank">
+                <h2 class="blank__title">Arquivo não encontrado</h2>
+                <p>Esse endereço não corresponde a nenhum arquivo do registro. Ele pode ter sido digitado errado.</p>
+                <a class="btn" href="/">Voltar ao registro</a>
+            </div>
+
+        {% when "failure" %}
+            <div class="blank">
+                <h2 class="blank__title">O BFF não conseguiu completar o pedido</h2>
+                <p class="blank__detail">{{ failure }}</p>
+                <p>Se o problema for o source-service ou o blob-service, veja os logs com <code>docker compose logs -f</code>.</p>
+                <a class="btn" href="/">Voltar ao registro</a>
+            </div>
+
+        {% else %}
+            <div class="blank">
+                {% if files.size == 0 and registerError == nil %}
+                <h2 class="blank__title">Registro vazio</h2>
+                <p>Crie o primeiro arquivo. Cada vez que você salvar, ele ganha uma nova revisão e as anteriores ficam guardadas.</p>
+                <a class="btn btn--primary" href="/novo">Criar o primeiro arquivo</a>
+                {% else %}
+                <h2 class="blank__title">Nenhum arquivo aberto</h2>
+                <p>Escolha um arquivo no registro ou crie um novo.</p>
+                {% endif %}
+            </div>
+        {% endcase %}
+        </div>
+    </main>
+
+    <aside class="side" aria-label="Revisões, emissões e carimbo">
+        <section class="panel" aria-labelledby="rev-title">
+            <h2 class="panel__title" id="rev-title">Revisões</h2>
+            {% if hasFile %}
+            <ol class="revs">
+                {% for r in revisions %}
+                <li>
+                    <a class="revs__item{% if r.selected %} is-selected{% endif %}" href="/source/{{ file.id }}?rev={{ r.version }}" {% if r.selected %}aria-current="page"{% endif %}>
+                        <span class="delta{% if r.selected %} delta--active{% endif %}">{{ r.version }}</span>
+                        <span>REV {{ r.version }}</span>
+                        {% if r.newest %}<span class="revs__tag">atual</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ol>
+            {% elsif mode == "new" %}
+            <p class="panel__empty">O arquivo nasce na REV 1. Cada salvamento depois disso acrescenta uma revisão.</p>
+            {% else %}
+            <p class="panel__empty">Abra um arquivo para ver suas revisões.</p>
+            {% endif %}
+        </section>
+
+        <section class="panel" id="emissions" aria-labelledby="out-title"
+            {% if pending %}hx-get="{{ selfUrl }}" hx-trigger="every 1s" hx-target="this" hx-select="#emissions" hx-swap="outerHTML" hx-push-url="false"{% endif %}>
+            <h2 class="panel__title" id="out-title">Emissões{% if hasFile %} · REV {{ selected }}{% endif %}</h2>
+            <div class="emit">
+                {% assign kinds = "compila,assembla" | split: "," %}
+                {% for k in kinds %}
+                <form method="post" action="{% if hasFile %}/source/{{ file.id }}/emitir{% endif %}" hx-target="#app" hx-select="#app" hx-swap="outerHTML">
+                    <input type="hidden" name="kind" value="{{ k }}">
+                    <input type="hidden" name="rev" value="{{ selected }}">
+                    <button class="btn btn--block" type="submit" {% unless hasFile %}disabled aria-describedby="emit-note"{% endunless %}>
+                        {% if k == "compila" %}
+                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4 1.5 8 5 12M11 4l3.5 4L11 12M9.5 2.5l-3 11"/></svg>
+                        Compilar
+                        {% else %}
+                        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h5"/></svg>
+                        Assemblar
+                        {% endif %}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+            {% if hasFile %}
+                {% if jobs.size > 0 %}
+                <ul class="jobs" aria-live="polite">
+                    {% for j in jobs %}
+                    <li class="job job--{{ j.status }}">
+                        <span class="job__label">{{ j.label }}</span>
+                        <span class="job__status">
+                            {% if j.status == "pendente" %}<span class="job__spinner" aria-hidden="true"></span>{% endif %}
+                            {{ j.detail }}{% if j.warnings %} · com avisos{% endif %}
+                        </span>
+                        <span class="job__links">
+                            {% if j.status != "pendente" %}<a class="job__link" href="{{ j.url }}">{% if j.status == "erro" %}ver erro{% else %}ver saída{% endif %}</a>{% endif %}
+                            {% if j.logs %}<a class="job__logs" href="{{ j.logs }}" target="_blank" rel="noopener" hx-boost="false" title="Logs deste pedido em todos os serviços (Grafana)">logs</a>{% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="panel__empty">Compilar mostra as mensagens do gcc e gera o binário; Assemblar mostra o assembly gerado a partir do C. Os pedidos entram numa fila e um worker processa.</p>
+                {% endif %}
+            {% else %}
+            <p class="panel__empty" id="emit-note">Abra um arquivo para compilar ou gerar o assembly.</p>
+            {% endif %}
+        </section>
+
+        <section class="stamp" aria-labelledby="stamp-title">
+            <h2 class="visually-hidden" id="stamp-title">Carimbo</h2>
+            <dl class="stamp__grid">
+                <div class="stamp__cell stamp__cell--wide">
+                    <dt>Título</dt>
+                    <dd class="stamp__title">{% if hasFile %}{{ file.name }}{% elsif mode == "new" %}novo arquivo{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell stamp__cell--wide">
+                    <dt>Nº do arquivo</dt>
+                    <dd class="mono" {% if hasFile %}title="{{ file.id }}"{% endif %}>{% if hasFile %}{{ file.id }}{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell">
+                    <dt>Rev</dt>
+                    <dd class="mono">{% if hasFile %}{{ selected }} / {{ newest }}{% elsif mode == "new" %}1{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell">
+                    <dt>Linguagem</dt>
+                    <dd>{% if hasFile %}{{ file.language }}{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell">
+                    <dt>Tamanho</dt>
+                    <dd class="mono">{% if hasFile %}{{ size }}{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell">
+                    <dt>Cursor</dt>
+                    <dd class="mono" data-cursor>{% if mode == "view" or mode == "new" or mode == "output" %}L1:C1{% else %}—{% endif %}</dd>
+                </div>
+                <div class="stamp__cell stamp__cell--wide stamp__cell--foot">
+                    <dt>Correlation ID</dt>
+                    <dd class="mono">{% if correlation %}<a href="{{ correlationLogs }}" target="_blank" rel="noopener" hx-boost="false" title="Ver os logs desta requisição no Grafana">{{ correlation }}</a>{% else %}—{% endif %}</dd>
+                </div>
+            </dl>
+        </section>
+    </aside>
+
+</div>
+{% endblock %}
