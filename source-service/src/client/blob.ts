@@ -1,4 +1,5 @@
 import init from "../env/index.js";
+import { correlationHeaders } from "../log/index.js";
 
 init();
 
@@ -8,10 +9,10 @@ async function send(bytes: ArrayBuffer): Promise<string|null> {
     const response = await fetch(`${BLOB_URL}blob`,
         {
             method: "POST",
-            headers: {
+            headers: correlationHeaders({
                 "Content-type": "application/octet-stream",
                 "Content-length": bytes.byteLength.toString()
-            },
+            }),
             body: bytes
         }
     )
@@ -23,7 +24,7 @@ async function send(bytes: ArrayBuffer): Promise<string|null> {
 }
 
 async function download(id: string): Promise<Uint8Array | null> {
-    const response = await fetch(`${BLOB_URL}blob/${id}`)
+    const response = await fetch(`${BLOB_URL}blob/${id}`, { headers: correlationHeaders() })
     if (!response.ok) {
         return null
     }
