@@ -16,7 +16,7 @@ services:
     depends_on:
       - postgres
     ports:
-      - 3001:3001
+     - 3001:3001
     environment:
       PGSCHEMA: blob
     env_file:
@@ -27,8 +27,15 @@ services:
     depends_on:
       - postgres
     ports:
-      - 3002:3002
+     - 3002:3002
     environment:
       PGSCHEMA: source
+    env_file:
+      - docker.env
+  bff:
+    build:
+      context: ./bff
+    ports:
+      - 3000:3000
     env_file:
       - docker.env

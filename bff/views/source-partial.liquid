@@ -1,5 +1,6 @@
 <div>
-    <form>
+{% capture action -%}{% if uuid %}/source/{{ uuid }}{% else %}/source-new{% endif %}{%- endcapture %}
+    <form method="POST" action="{{ action }}" hx-action="{{ action }}" hx-swap="innerHTML" hx-target="#content">
         <div>
             <label for="uuid">UUID</label>
             <input type="text" disabled id="uuid" name="uuid" value="{{ uuid }}"/>
@@ -8,11 +9,12 @@
             <input type="text" disabled id="version" name="version" value="{{ version }}"/>
 
             <label for="filename">Filename</label>
-            <input type="text" id="filename" name="filename" value="{{ filename }}"/>
+            <input type="text" {% unless newVersion %}disabled{% endunless %} id="filename" name="filename" value="{{ filename }}"/>
         </div>
         <div>
             <label for="filecontent">File content</label>
             <textarea rows="30" columns="80" id="filecontent" name="filecontent">{{ content | escape }}</textarea>
         </div>
+        <input type="submit"/>
     </form>
 </div>

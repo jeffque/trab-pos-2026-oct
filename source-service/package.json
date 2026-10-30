@@ -1,7 +1,7 @@
 {
-  "name": "blob-service",
+  "name": "source-service",
   "version": "0.0.1",
-  "description": "Serviço de armazenar blobs",
+  "description": "Serviço de armazenar fontes e seus compilados",
   "license": "ISC",
   "author": "",
   "type": "module",
