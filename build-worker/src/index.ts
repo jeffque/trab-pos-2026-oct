@@ -1,6 +1,6 @@
 import init from "./env/index.js";
 import amqp from "amqplib";
-import type { Channel, ConsumeMessage } from "amqplib";
+import type { Channel, ConfirmChannel, ConsumeMessage } from "amqplib";
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,55 +27,57 @@ const KINDS: BuildKind[] = (process.env.WORKER_QUEUES ?? ALL_KINDS.join(","))
     .map(q => q.trim())
     .filter((q): q is BuildKind => (ALL_KINDS as string[]).includes(q))
 
-type BuildMessage = {
-    build_id: string,
-    source_id: string,
-    name: string,
-    version: number,
-    kind: BuildKind,
-    correlation_id?: string
+// para onde volta o evento de cada tipo de trabalho
+const RESULT_QUEUE: Record<BuildKind, string> = {
+    compila: "compilacao.resultado",
+    assembla: "assemblagem.resultado"
 }
 
-// precisa ser idêntico à declaração do source-service, senão o rabbit recusa (PRECONDITION_FAILED)
+// pedido de compilação: um workspace com fontes .c/.h em revisões fixas
+type CompileMessage = { workspace_id: string, name: string, files: { name: string, version: number }[], correlation_id?: string }
+// pedido de assemblagem: arquivos objeto (blobs) de vários workspaces
+type AssembleMessage = { assemblage_id: string, name: string, objects: { workspace_name: string, blob_id: string }[], correlation_id?: string }
+
+type Result = { status: "ok" | "erro", blob_id?: string, size?: number, log: string }
+
+// precisa ser idêntico à declaração dos outros serviços, senão o rabbit recusa (PRECONDITION_FAILED)
 const DLQ = "builds.dlq"
 const queueOptions = {
     durable: true,
     arguments: { "x-dead-letter-exchange": "", "x-dead-letter-routing-key": DLQ }
 }
+const ALL_QUEUES = [ "compila", "assembla", "compilacao.resultado", "assemblagem.resultado" ]
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 // nome seguro para o arquivo temporário: só o basename, sem caracteres estranhos
 // e sem "-" no início (senão o gcc leria o nome do arquivo como uma opção)
-function safeName(name: string): string {
+function safeName(name: string, fallback: string): string {
     const base = (name.split(/[\\/]/).pop() ?? "").replace(/[^\w.-]/g, "_").replace(/^-+/, "")
-    return base || "fonte.c"
+    return base || fallback
 }
 
-function gccArgs(kind: BuildKind, input: string, output: string): string[] {
-    const common = [ "-x", "c", "-std=c17", "-Wall", "-Wextra" ]
-    if (kind == "compila") {
-        // estático: o binário roda em qualquer Linux x86-64, sem depender da musl do worker
-        return [ ...common, "-O0", "-static", "-o", output, input ]
-    }
-    // assembly legível: sintaxe intel (só em x86_64) e sem diretivas .cfi
-    const syntax = process.arch == "x64" ? [ "-masm=intel" ] : []
-    return [ ...common, "-O1", "-S", ...syntax, "-fno-asynchronous-unwind-tables", "-o", output, input ]
-}
-
-// gcc com tempo limite, sem herdar variáveis de ambiente do worker
-function gcc(args: string[], cwd: string): Promise<{ ok: boolean, output: string, timedOut: boolean }> {
+// roda gcc/ld com tempo limite, sem shell e sem herdar variáveis de ambiente do worker
+function run(cmd: string, args: string[], cwd: string): Promise<{ ok: boolean, output: string }> {
     return new Promise(resolve => {
-        execFile("gcc", args, {
+        execFile(cmd, args, {
             cwd,
             timeout: TIMEOUT_MS,
             killSignal: "SIGKILL",
             maxBuffer: 1024 * 1024,
             env: { PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin" }
         }, (err, stdout, stderr) => {
-            resolve({ ok: !err, output: `${stdout}${stderr}`, timedOut: Boolean(err?.killed) })
+            let output = `${stdout}${stderr}`
+            if (err?.killed) {
+                output += `\nTempo limite de ${TIMEOUT_MS / 1000} s excedido; o ${cmd} foi interrompido.`
+            }
+            resolve({ ok: !err, output })
         })
     })
+}
+
+function clip(text: string): string {
+    return text.length > MAX_LOG ? text.slice(0, MAX_LOG) + "\n[log truncado]" : text
 }
 
 async function fetchSource(name: string, version: number): Promise<string> {
@@ -84,6 +86,14 @@ async function fetchSource(name: string, version: number): Promise<string> {
         throw new Error(`source-service respondeu ${response.status} ao buscar ${name} REV ${version}`)
     }
     return response.text()
+}
+
+async function fetchBlob(id: string): Promise<Buffer> {
+    const response = await fetch(`${BLOB_URL}content/${encodeURIComponent(id)}`, { headers: correlationHeaders() })
+    if (!response.ok) {
+        throw new Error(`blob-service respondeu ${response.status} ao buscar o objeto ${id}`)
+    }
+    return Buffer.from(await response.arrayBuffer())
 }
 
 async function pushBlob(bytes: Buffer): Promise<string> {
@@ -99,75 +109,117 @@ async function pushBlob(bytes: Buffer): Promise<string> {
     return json.id
 }
 
-async function report(buildId: string, body: { status: "ok" | "erro", blob_id?: string, size?: number, log: string }) {
-    const response = await fetch(`${SOURCE_URL}builds/${buildId}`, {
-        method: "PUT",
-        headers: correlationHeaders({ "Content-type": "application/json" }),
-        body: JSON.stringify(body)
-    })
-    if (!response.ok) {
-        throw new Error(`source-service respondeu ${response.status} ao registrar o resultado`)
-    }
-}
-
-async function handle(msg: BuildMessage): Promise<"ok" | "erro"> {
+async function inTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     const dir = await mkdtemp(join(tmpdir(), "build-"))
     try {
-        const code = await fetchSource(msg.name, msg.version)
-        const input = safeName(msg.name)
-        await writeFile(join(dir, input), code)
-
-        const output = msg.kind == "compila" ? "programa.out" : "saida.s"
-        const result = await gcc(gccArgs(msg.kind, input, output), dir)
-
-        let text = result.output
-        if (result.timedOut) {
-            text += `\nTempo limite de ${TIMEOUT_MS / 1000} s excedido; o gcc foi interrompido.`
-        }
-        if (text.length > MAX_LOG) {
-            text = text.slice(0, MAX_LOG) + "\n[log truncado]"
-        }
-
-        if (!result.ok) {
-            await report(msg.build_id, { status: "erro", log: text })
-            return "erro"
-        }
-
-        const bytes = await readFile(join(dir, output))
-        const blob_id = await pushBlob(bytes)
-        await report(msg.build_id, { status: "ok", blob_id, size: bytes.length, log: text })
-        return "ok"
+        return await fn(dir)
     } finally {
         await rm(dir, { recursive: true, force: true })
     }
 }
 
-async function onMessage(ch: Channel, m: ConsumeMessage | null) {
+// workspace -> um arquivo objeto: gcc -c em cada .c (com os .h ao lado) e, se houver mais de um, ld -r junta tudo
+async function compile(msg: CompileMessage): Promise<Result> {
+    return inTempDir(async dir => {
+        const sources: string[] = []
+        for (const file of msg.files) {
+            const name = safeName(file.name, "fonte.c")
+            await writeFile(join(dir, name), await fetchSource(file.name, file.version))
+            if (/\.c$/i.test(name)) {
+                sources.push(name)
+            }
+        }
+        if (sources.length == 0) {
+            return { status: "erro", log: "O workspace não tem nenhum arquivo .c." }
+        }
+
+        const gcc = await run("gcc", [ "-std=c17", "-Wall", "-Wextra", "-O0", "-I.", "-c", ...sources ], dir)
+        let text = gcc.output
+        if (!gcc.ok) {
+            return { status: "erro", log: clip(text) }
+        }
+
+        const objects = sources.map(s => s.replace(/\.c$/i, ".o"))
+        let output = objects[0]!
+        if (objects.length > 1) {
+            output = "workspace.o"
+            const ld = await run("ld", [ "-r", "-o", output, ...objects ], dir)
+            text += ld.output
+            if (!ld.ok) {
+                return { status: "erro", log: clip(text) }
+            }
+        }
+
+        const bytes = await readFile(join(dir, output))
+        const blob_id = await pushBlob(bytes)
+        return { status: "ok", blob_id, size: bytes.length, log: clip(text) }
+    })
+}
+
+// objetos -> executável: linkagem estática (roda em qualquer Linux x86-64); o programa nunca é executado aqui
+async function assemble(msg: AssembleMessage): Promise<Result> {
+    return inTempDir(async dir => {
+        const objects: string[] = []
+        for (const [ i, obj ] of msg.objects.entries()) {
+            const name = `${String(i + 1).padStart(2, "0")}-${safeName(obj.workspace_name, "objeto")}.o`
+            await writeFile(join(dir, name), await fetchBlob(obj.blob_id))
+            objects.push(name)
+        }
+        if (objects.length == 0) {
+            return { status: "erro", log: "Nenhum arquivo objeto para linkar." }
+        }
+
+        const gcc = await run("gcc", [ "-static", "-o", "programa", ...objects ], dir)
+        if (!gcc.ok) {
+            return { status: "erro", log: clip(gcc.output) }
+        }
+        const bytes = await readFile(join(dir, "programa"))
+        const blob_id = await pushBlob(bytes)
+        return { status: "ok", blob_id, size: bytes.length, log: clip(gcc.output) }
+    })
+}
+
+// devolve o evento ("compilei" / "assemblei") para o serviço dono do pedido
+async function emit(pub: ConfirmChannel, kind: BuildKind, idField: Record<string, string>, result: Result, correlationId: string) {
+    pub.sendToQueue(RESULT_QUEUE[kind], Buffer.from(JSON.stringify({ ...idField, ...result, correlation_id: correlationId })), {
+        persistent: true,
+        contentType: "application/json",
+        correlationId
+    })
+    await pub.waitForConfirms()
+}
+
+async function onMessage(kind: BuildKind, ch: Channel, pub: ConfirmChannel, m: ConsumeMessage | null) {
     if (!m) {
         return
     }
-    let msg: BuildMessage
+    let msg: CompileMessage | AssembleMessage
     try {
         msg = JSON.parse(m.content.toString())
     } catch {
-        log().error({ queue: m.fields.routingKey }, "mensagem ilegível, enviada para a DLQ")
+        log().error({ queue: kind }, "mensagem ilegível, enviada para a DLQ")
         return ch.nack(m, false, false)
     }
 
-    // o id vem do source-service (que recebeu do bff); sem ele, cria um para não perder o rastro
+    const idField: Record<string, string> = kind == "compila"
+        ? { workspace_id: (msg as CompileMessage).workspace_id }
+        : { assemblage_id: (msg as AssembleMessage).assemblage_id }
+
+    // o id vem do serviço que publicou (que recebeu do bff); sem ele, cria um para não perder o rastro
     const id = msg.correlation_id ?? m.properties.correlationId ?? randomUUID()
     await withCorrelation(id, async () => {
-        const fields = { build_id: msg.build_id, kind: msg.kind, name: msg.name, version: msg.version }
-        log().info(fields, "build recebido da fila")
+        const fields = { kind, name: msg.name, ...idField }
+        log().info(fields, "pedido recebido da fila")
         const started = Date.now()
         try {
-            const status = await handle(msg)
+            const result = kind == "compila" ? await compile(msg as CompileMessage) : await assemble(msg as AssembleMessage)
+            await emit(pub, kind, idField, result, id)
             ch.ack(m)
-            log().info({ ...fields, status, duration_ms: Date.now() - started }, "build concluído")
+            log().info({ ...fields, status: result.status, size: result.size, duration_ms: Date.now() - started }, "pedido concluído, evento publicado")
         } catch (err) {
             const reason = err instanceof Error ? err.message : String(err)
-            log().error({ ...fields, err: reason }, "build falhou, enviado para a DLQ")
-            await report(msg.build_id, { status: "erro", log: `Falha interna no worker: ${reason}` }).catch(() => {})
+            log().error({ ...fields, err: reason }, "pedido falhou, enviado para a DLQ")
+            await emit(pub, kind, idField, { status: "erro", log: `Falha interna no worker: ${reason}` }, id).catch(() => {})
             ch.nack(m, false, false)
         }
     })
@@ -182,14 +234,17 @@ async function start() {
             const connection = await amqp.connect(RABBIT_URL)
             connection.on("error", err => log().warn({ err: err.message }, "erro na conexão com o rabbitmq"))
             const ch = await connection.createChannel()
+            const pub = await connection.createConfirmChannel()
             await ch.assertQueue(DLQ, { durable: true })
+            for (const q of ALL_QUEUES) {
+                await ch.assertQueue(q, queueOptions)
+            }
             await ch.prefetch(1)
             for (const kind of KINDS) {
-                await ch.assertQueue(kind, queueOptions)
-                await ch.consume(kind, m => { onMessage(ch, m) })
+                await ch.consume(kind, m => { onMessage(kind, ch, pub, m) })
             }
             consuming = true
-            log().info({ queues: KINDS }, "aguardando builds")
+            log().info({ queues: KINDS }, "aguardando pedidos")
             await new Promise(resolve => connection.on("close", resolve))
             consuming = false
             log().warn("conexão com o rabbitmq perdida")
